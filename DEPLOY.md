@@ -31,6 +31,31 @@ Dopo il deploy aggiungi questo URL anche in Supabase:
 - Authentication -> URL Configuration -> Site URL
 - Authentication -> URL Configuration -> Redirect URLs
 
+## Vercel
+
+Vercel pubblica la webapp React come frontend statico collegato a Supabase.
+La configurazione e' in `vercel.json`.
+
+1. Vai su Vercel e crea un nuovo progetto.
+2. Importa la repository GitHub `Giuliochia/miragerp`.
+3. Lascia la root del progetto sulla cartella principale della repo.
+4. Aggiungi le Environment Variables:
+
+```bash
+VITE_SUPABASE_URL=https://your-project.supabase.co
+VITE_SUPABASE_ANON_KEY=your-anon-key
+```
+
+5. Deploy.
+
+Dopo il deploy, copia l'URL Vercel e aggiungilo in Supabase:
+
+- Authentication -> URL Configuration -> Site URL
+- Authentication -> URL Configuration -> Redirect URLs
+
+Nota: su Vercel questa configurazione pubblica la dashboard, economia, eventi, drop, documenti, storico e login Discord.
+Le vecchie API AI Node non vengono pubblicate su Vercel in questa modalita'.
+
 Build command:
 
 ```bash
