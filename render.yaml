@@ -1,6 +1,6 @@
 services:
   - type: web
-    name: rp-architect
+    name: mirage-rp-economy-hub
     env: node
     buildCommand: npm run install:all && npm run build
     startCommand: npm --prefix server run start
@@ -9,6 +9,8 @@ services:
         value: production
       - key: AI_PROVIDER
         value: groq
+      - key: GROQ_API_KEY
+        sync: false
       - key: GROQ_MODEL
         value: llama-3.3-70b-versatile
       - key: VITE_SUPABASE_URL

@@ -1,6 +1,6 @@
-# Deploy RP Architect
+# Deploy Mirage RP Economy Hub
 
-RP Architect puo' essere pubblicata come una singola webapp Node:
+Mirage RP Economy Hub puo' essere pubblicata come una singola webapp Node:
 
 - `server` espone le API `/api`
 - `client` viene buildato in `client/dist`
@@ -15,7 +15,21 @@ RP Architect puo' essere pubblicata come una singola webapp Node:
    - `AI_PROVIDER=groq`
    - `GROQ_MODEL=llama-3.3-70b-versatile`
    - `NODE_ENV=production`
+   - `VITE_SUPABASE_URL`
+   - `VITE_SUPABASE_ANON_KEY`
 4. Deploy.
+
+Con il Blueprint, Render prende gia' build e start command da `render.yaml`.
+Il nome servizio suggerito e' `mirage-rp-economy-hub`, quindi l'URL Render sara' simile a:
+
+```bash
+https://mirage-rp-economy-hub.onrender.com
+```
+
+Dopo il deploy aggiungi questo URL anche in Supabase:
+
+- Authentication -> URL Configuration -> Site URL
+- Authentication -> URL Configuration -> Redirect URLs
 
 Build command:
 
