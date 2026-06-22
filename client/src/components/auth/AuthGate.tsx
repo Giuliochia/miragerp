@@ -32,13 +32,29 @@ export default function AuthGate({ children }: AuthGateProps) {
       setLoading(false);
       return;
     }
+    const client = supabase;
 
-    supabase.auth.getSession().then(({ data }) => {
+    const loadSession = async () => {
+      const url = new URL(window.location.href);
+      const code = url.searchParams.get('code');
+
+      if (code) {
+        const { error: exchangeError } = await client.auth.exchangeCodeForSession(code);
+        if (exchangeError) {
+          setError(exchangeError.message);
+        } else {
+          window.history.replaceState({}, document.title, `${window.location.origin}${window.location.pathname}`);
+        }
+      }
+
+      const { data } = await client.auth.getSession();
       setSession(data.session);
       setLoading(false);
-    });
+    };
 
-    const { data: listener } = supabase.auth.onAuthStateChange((_event, nextSession) => {
+    loadSession();
+
+    const { data: listener } = client.auth.onAuthStateChange((_event, nextSession) => {
       setSession(nextSession);
       setLoading(false);
     });
@@ -83,7 +99,7 @@ export default function AuthGate({ children }: AuthGateProps) {
     const { error: discordError } = await supabase.auth.signInWithOAuth({
       provider: 'discord',
       options: {
-        redirectTo: window.location.origin,
+        redirectTo: `${window.location.origin}/`,
       },
     });
     if (discordError) {
