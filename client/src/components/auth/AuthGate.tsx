@@ -37,11 +37,24 @@ export default function AuthGate({ children }: AuthGateProps) {
     const loadSession = async () => {
       const url = new URL(window.location.href);
       const code = url.searchParams.get('code');
+      const hashParams = new URLSearchParams(window.location.hash.replace(/^#/, ''));
+      const accessToken = hashParams.get('access_token');
+      const refreshToken = hashParams.get('refresh_token');
 
       if (code) {
         const { error: exchangeError } = await client.auth.exchangeCodeForSession(code);
         if (exchangeError) {
           setError(exchangeError.message);
+        } else {
+          window.history.replaceState({}, document.title, `${window.location.origin}${window.location.pathname}`);
+        }
+      } else if (accessToken && refreshToken) {
+        const { error: sessionError } = await client.auth.setSession({
+          access_token: accessToken,
+          refresh_token: refreshToken,
+        });
+        if (sessionError) {
+          setError(sessionError.message);
         } else {
           window.history.replaceState({}, document.title, `${window.location.origin}${window.location.pathname}`);
         }
