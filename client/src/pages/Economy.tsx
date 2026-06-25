@@ -27,6 +27,12 @@ const legacyLabels: Record<string, string> = {
 const ALL_FOLDERS = 'all';
 const UNCATEGORIZED_FOLDER = 'uncategorized';
 
+const impactBands = [
+  { value: 'low', label: 'Bassa' },
+  { value: 'medium', label: 'Media' },
+  { value: 'high', label: 'Alta' },
+] as const;
+
 const blankItem = (category = 'Comune', acquisition = 'Negozio', folderId = ''): EconomyCustomItem => ({
   id: uuidv4(),
   folderId,
@@ -34,6 +40,9 @@ const blankItem = (category = 'Comune', acquisition = 'Negozio', folderId = ''):
   category,
   acquisition,
   price: 100,
+  supplierPrice: 0,
+  fillWeight: 10,
+  impactBand: 'medium',
   quantity: 10,
   restockPerDay: 0,
   notes: '',
@@ -56,6 +65,14 @@ function containsAny(value: string, needles: string[]) {
   return needles.some((needle) => text.includes(needle));
 }
 
+function impactBandLabel(value: EconomyCustomItem['impactBand']) {
+  return impactBands.find((band) => band.value === value)?.label ?? 'Media';
+}
+
+function fillWeightValue(item: EconomyCustomItem) {
+  return item.fillWeight ?? item.quantity ?? 0;
+}
+
 function scoreColor(score: number, healthyThreshold: number, warningThreshold: number) {
   if (score >= healthyThreshold) return 'text-accent-green';
   if (score >= warningThreshold) return 'text-accent-amber';
@@ -65,7 +82,7 @@ function scoreColor(score: number, healthyThreshold: number, warningThreshold: n
 function scoreLabel(score: number, healthyThreshold: number, warningThreshold: number) {
   if (score >= healthyThreshold) return 'Economia tendenzialmente fattibile.';
   if (score >= warningThreshold) return 'Economia utilizzabile, ma da monitorare.';
-  return 'Economia sproporzionata: serve rivedere payout, prezzi o quantita disponibili.';
+  return 'Economia sproporzionata: serve rivedere payout, prezzi, peso/riempimento o costo fornitore.';
 }
 
 export default function Economy() {
@@ -117,13 +134,17 @@ export default function Economy() {
     const legalIncome = Math.max(1, base.legalIncomeAverage);
     const illegalIncome = Math.max(1, base.illegalIncomeAverage);
     const incomeRatio = illegalIncome / legalIncome;
-    const totalStockValue = items.reduce((sum, item) => sum + item.price * item.quantity, 0);
-    const illegalStockValue = items
+    const totalCatalogValue = items.reduce((sum, item) => sum + item.price, 0);
+    const illegalCatalogValue = items
       .filter((item) => containsAny(item.category, ['illegal', 'illegale']) || containsAny(item.acquisition, ['mercato nero', 'black market']))
-      .reduce((sum, item) => sum + item.price * item.quantity, 0);
-    const weaponQuantity = items
+      .reduce((sum, item) => sum + item.price, 0);
+    const highImpactItems = items.filter((item) => item.impactBand === 'high').length;
+    const supplierMarginWarnings = items.filter((item) => (
+      (item.supplierPrice ?? 0) > 0 && item.price > 0 && item.supplierPrice! > item.price * 0.85
+    ));
+    const heavyWeaponItems = items
       .filter((item) => containsAny(item.category, ['arma', 'weapon']))
-      .reduce((sum, item) => sum + item.quantity, 0);
+      .filter((item) => fillWeightValue(item) >= 20).length;
     const tooCheapRareItems = items.filter((item) => (
       containsAny(item.category, ['raro', 'rare', 'arma', 'weapon', 'illegale', 'illegal']) &&
       item.price < base.legalIncomeAverage * 1.5
@@ -131,17 +152,20 @@ export default function Economy() {
 
     let score = 100;
     if (incomeRatio > 2.5) score -= (incomeRatio - 2.5) * 12;
-    if (totalStockValue > illegalIncome * 25) score -= 10;
-    if (illegalStockValue > totalStockValue * 0.45 && totalStockValue > 0) score -= 12;
-    if (weaponQuantity > 20) score -= 10;
+    if (totalCatalogValue > illegalIncome * 8) score -= 8;
+    if (illegalCatalogValue > totalCatalogValue * 0.45 && totalCatalogValue > 0) score -= 12;
+    if (highImpactItems > items.length * 0.4 && items.length > 0) score -= 8;
+    if (heavyWeaponItems > 3) score -= 8;
     score -= tooCheapRareItems.length * 5;
+    score -= supplierMarginWarnings.length * 3;
 
     return {
       score: clamp(score),
       incomeRatio,
-      totalStockValue,
-      illegalStockValue,
-      weaponQuantity,
+      totalCatalogValue,
+      illegalCatalogValue,
+      highImpactItems,
+      supplierMarginWarnings,
       tooCheapRareItems,
     };
   }, [base, items]);
@@ -171,6 +195,17 @@ export default function Economy() {
       });
     });
 
+    analysis.supplierMarginWarnings.forEach((item) => {
+      result.push({
+        id: `supplier-${item.id}`,
+        riskLevel: 'medium' as DangerLevel,
+        title: `${item.name} ha margine fornitore basso`,
+        explanation: `Prezzo fornitore $${(item.supplierPrice ?? 0).toLocaleString()} rispetto a vendita $${item.price.toLocaleString()}.`,
+        correction: 'Riduci costo fornitore o aumenta prezzo vendita per lasciare margine operativo.',
+        affectedElements: [item.name],
+      });
+    });
+
     return result;
   }, [analysis, base.legalIncomeAverage]);
 
@@ -189,7 +224,7 @@ export default function Economy() {
       hardMissionReward: 0,
       inflationRisk: analysis.score < warningThreshold ? 'high' : analysis.score < healthyThreshold ? 'medium' : 'low',
       balanceScore: analysis.score,
-      balanceNotes: 'Score calcolato su entrate, prezzo item, quantita disponibili, peso illegale e rapporto ore/prezzo.',
+      balanceNotes: 'Score calcolato su entrate, prezzo item, prezzo fornitore, fascia impatto, peso/riempimento e rapporto ore/prezzo.',
       antiFarmRules: [],
       customFolders: nextFolders,
       customItems: nextItems,
@@ -243,7 +278,10 @@ export default function Economy() {
       category: draft.category.trim() || categories[0],
       acquisition: draft.acquisition.trim() || acquisitionMethods[0],
       price: Math.max(0, draft.price),
-      quantity: Math.max(0, draft.quantity),
+      supplierPrice: Math.max(0, draft.supplierPrice ?? 0),
+      fillWeight: Math.max(0, fillWeightValue(draft)),
+      impactBand: draft.impactBand ?? 'medium',
+      quantity: Math.max(0, fillWeightValue(draft)),
       restockPerDay: 0,
       createdAt: now,
       updatedAt: now,
@@ -390,7 +428,7 @@ export default function Economy() {
       <div className="card space-y-4">
         <div>
           <h2 className="text-sm font-bold text-text-primary">3. Item custom</h2>
-          <p className="text-xs text-text-muted mt-1">Inserisci gli item del server con cartella, nome, prezzo singolo, quantita, categoria e modo in cui si ottengono.</p>
+          <p className="text-xs text-text-muted mt-1">Inserisci gli item del server con cartella, prezzo vendita, prezzo fornitore, peso/riempimento e fascia impatto.</p>
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
@@ -406,14 +444,35 @@ export default function Economy() {
             </select>
           </div>
           <div>
-            <label className="label">Prezzo unitario</label>
+            <label className="label">Prezzo vendita</label>
             <input type="number" className="input" placeholder="es. 1000" value={draft.price} onChange={(e) => setDraft({ ...draft, price: Number(e.target.value) })} />
-            <div className="text-[10px] text-text-muted mt-1">Quanto costa 1 pezzo.</div>
+            <div className="text-[10px] text-text-muted mt-1">Quanto paga il player per 1 pezzo.</div>
           </div>
           <div>
-            <label className="label">Stock disponibile</label>
-            <input type="number" className="input" placeholder="es. 10" value={draft.quantity} onChange={(e) => setDraft({ ...draft, quantity: Number(e.target.value) })} />
-            <div className="text-[10px] text-text-muted mt-1">Quanti pezzi possono circolare.</div>
+            <label className="label">Prezzo acquisto fornitore</label>
+            <input type="number" className="input" placeholder="es. 450" value={draft.supplierPrice ?? 0} onChange={(e) => setDraft({ ...draft, supplierPrice: Number(e.target.value) })} />
+            <div className="text-[10px] text-text-muted mt-1">Quanto costa comprarlo dal fornitore.</div>
+          </div>
+          <div>
+            <label className="label">Riempimento / Peso</label>
+            <input
+              type="number"
+              className="input"
+              placeholder="es. 10"
+              value={fillWeightValue(draft)}
+              onChange={(e) => {
+                const value = Number(e.target.value);
+                setDraft({ ...draft, fillWeight: value, quantity: value });
+              }}
+            />
+            <div className="text-[10px] text-text-muted mt-1">Per i cibi indica quanto riempie, per gli altri item quanto pesa.</div>
+          </div>
+          <div>
+            <label className="label">Fascia</label>
+            <select className="select" value={draft.impactBand ?? 'medium'} onChange={(e) => setDraft({ ...draft, impactBand: e.target.value as EconomyCustomItem['impactBand'] })}>
+              {impactBands.map((band) => <option key={band.value} value={band.value}>{band.label}</option>)}
+            </select>
+            <div className="text-[10px] text-text-muted mt-1">Intensita bassa, media o alta.</div>
           </div>
           <div>
             <label className="label">Categoria</label>
@@ -471,12 +530,16 @@ export default function Economy() {
               <span className={analysis.incomeRatio > 3.5 ? 'text-accent-red font-bold' : 'text-text-primary font-semibold'}>{analysis.incomeRatio.toFixed(1)}x</span>
             </div>
             <div className="flex justify-between gap-3">
-              <span className="text-text-muted">Valore stock</span>
-              <span className="text-text-primary font-semibold">${analysis.totalStockValue.toLocaleString()}</span>
+              <span className="text-text-muted">Valore catalogo</span>
+              <span className="text-text-primary font-semibold">${analysis.totalCatalogValue.toLocaleString()}</span>
             </div>
             <div className="flex justify-between gap-3">
               <span className="text-text-muted">Valore illegale</span>
-              <span className="text-text-primary font-semibold">${analysis.illegalStockValue.toLocaleString()}</span>
+              <span className="text-text-primary font-semibold">${analysis.illegalCatalogValue.toLocaleString()}</span>
+            </div>
+            <div className="flex justify-between gap-3">
+              <span className="text-text-muted">Fascia alta</span>
+              <span className="text-text-primary font-semibold">{analysis.highImpactItems}</span>
             </div>
           </div>
           <p className={`text-sm leading-relaxed ${scoreColor(analysis.score, healthyThreshold, warningThreshold)}`}>
@@ -509,17 +572,30 @@ export default function Economy() {
                 const legalHours = item.price / Math.max(1, base.legalIncomeAverage);
                 const illegalHours = item.price / Math.max(1, base.illegalIncomeAverage);
                 const itemFolder = item.folderId ? folderLabelById.get(item.folderId) : '';
+                const supplierMargin = item.price - (item.supplierPrice ?? 0);
                 return (
                   <div key={item.id} className="bg-bg-card2 border border-border rounded-lg p-3">
                     <div className="flex items-start justify-between gap-3">
                       <div className="min-w-0">
                         <div className="text-sm font-semibold text-text-primary truncate">{item.name}</div>
                         <div className="text-[11px] text-text-muted mt-1">
-                          {displayLabel(item.category)} - {displayLabel(item.acquisition)} - qty {item.quantity}
+                          {displayLabel(item.category)} - {displayLabel(item.acquisition)} - peso/riemp. {fillWeightValue(item)} - fascia {impactBandLabel(item.impactBand)}
                         </div>
-                        <div className="mt-2 inline-flex items-center gap-1 rounded-full border border-border bg-bg-card px-2 py-0.5 text-[10px] font-semibold text-text-muted">
-                          <Folder size={11} />
-                          {itemFolder || 'Senza cartella'}
+                        <div className="mt-2 flex flex-wrap gap-1">
+                          <span className="inline-flex items-center gap-1 rounded-full border border-border bg-bg-card px-2 py-0.5 text-[10px] font-semibold text-text-muted">
+                            <Folder size={11} />
+                            {itemFolder || 'Senza cartella'}
+                          </span>
+                          <span className="inline-flex rounded-full border border-border bg-bg-card px-2 py-0.5 text-[10px] font-semibold text-text-muted">
+                            Fornitore ${(item.supplierPrice ?? 0).toLocaleString()}
+                          </span>
+                          <span className={`inline-flex rounded-full border px-2 py-0.5 text-[10px] font-semibold ${
+                            supplierMargin <= 0
+                              ? 'border-accent-red/30 bg-accent-red/10 text-accent-red'
+                              : 'border-accent-green/30 bg-accent-green/10 text-accent-green'
+                          }`}>
+                            Margine ${supplierMargin.toLocaleString()}
+                          </span>
                         </div>
                       </div>
                       <div className="flex items-center gap-2 flex-shrink-0">
@@ -544,8 +620,8 @@ export default function Economy() {
       <div className="card bg-accent-blue/5 border-accent-blue/25">
         <div className="text-xs font-bold text-accent-blue uppercase tracking-wide mb-2">Come viene calcolata</div>
         <p className="text-sm text-text-secondary leading-relaxed">
-          L'app confronta guadagno orario, prezzo degli item, quantita totale disponibile e peso dell'illegale.
-          Se un item raro o illegale costa poche ore di lavoro, oppure se l'illegale domina il valore del mercato, il punteggio scende.
+          L'app confronta guadagno orario, prezzo vendita, costo fornitore, fascia impatto e peso dell'illegale.
+          Se un item raro o illegale costa poche ore di lavoro, ha margine fornitore troppo basso o concentra troppo valore sull'illegale, il punteggio scende.
         </p>
       </div>
 

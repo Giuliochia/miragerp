@@ -47,8 +47,15 @@ const statusLabels: Record<string, string> = {
   archived: 'Archiviato',
 };
 
+const impactBandLabels: Record<string, string> = {
+  low: 'Bassa',
+  medium: 'Media',
+  high: 'Alta',
+};
+
 function displayFieldValue(field: string, value: unknown) {
   if (field === 'status') return statusLabels[String(value ?? 'draft')] ?? textValue(value);
+  if (field === 'impactBand') return impactBandLabels[String(value ?? 'medium')] ?? textValue(value);
   if (field === 'value' || field === 'dropQuantity' || field.includes('Income') || field.includes('Price') || field.includes('Reward')) {
     return textValue(value);
   }
@@ -189,7 +196,9 @@ function buildAuditSummary(previous: WorkspaceSnapshot | null, next: WorkspaceSn
         { key: 'folderId', label: 'cartella' },
         { key: 'category', label: 'categoria' },
         { key: 'price', label: 'prezzo' },
-        { key: 'quantity', label: 'quantita' },
+        { key: 'supplierPrice', label: 'prezzo fornitore' },
+        { key: 'fillWeight', label: 'peso/riempimento' },
+        { key: 'impactBand', label: 'fascia' },
         { key: 'acquisition', label: 'ottenimento' },
       ],
     }

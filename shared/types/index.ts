@@ -221,6 +221,9 @@ export interface EconomyCustomItem {
   name: string;
   category: string;
   price: number;
+  supplierPrice?: number;
+  fillWeight?: number;
+  impactBand?: 'low' | 'medium' | 'high';
   quantity: number;
   acquisition: string;
   restockPerDay: number;
