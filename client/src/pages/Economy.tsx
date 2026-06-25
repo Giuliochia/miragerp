@@ -131,6 +131,35 @@ export default function Economy() {
     return items.filter((item) => item.folderId === activeFolder);
   }, [activeFolder, folderLabelById, items]);
 
+  const selectedFolderName = activeFolder === UNCATEGORIZED_FOLDER
+    ? 'Senza cartella'
+    : folders.find((folder) => folder.id === activeFolder)?.name ?? '';
+
+  const folderCards = useMemo(() => {
+    const folderSummaries = folders.map((folder) => {
+      const folderItems = items.filter((item) => item.folderId === folder.id);
+      return {
+        id: folder.id,
+        name: folder.name,
+        items: folderItems,
+        count: folderItems.length,
+        value: folderItems.reduce((sum, item) => sum + item.price, 0),
+      };
+    });
+
+    const uncategorizedItems = items.filter((item) => !item.folderId || !folderLabelById.has(item.folderId));
+    return [
+      ...folderSummaries,
+      {
+        id: UNCATEGORIZED_FOLDER,
+        name: 'Senza cartella',
+        items: uncategorizedItems,
+        count: uncategorizedItems.length,
+        value: uncategorizedItems.reduce((sum, item) => sum + item.price, 0),
+      },
+    ];
+  }, [folderLabelById, folders, items]);
+
   const analysis = useMemo(() => {
     const legalIncome = Math.max(1, base.legalIncomeAverage);
     const illegalIncome = Math.max(1, base.illegalIncomeAverage);
@@ -333,6 +362,59 @@ export default function Economy() {
     setItems(nextItems);
     if (editingItemId === id) resetDraft();
     saveEconomy(nextItems);
+  };
+
+  const renderItemCard = (item: EconomyCustomItem) => {
+    const legalHours = item.price / Math.max(1, base.legalIncomeAverage);
+    const illegalHours = item.price / Math.max(1, base.illegalIncomeAverage);
+    const itemFolder = item.folderId ? folderLabelById.get(item.folderId) : '';
+    const supplierMargin = item.price - (item.supplierPrice ?? 0);
+
+    return (
+      <div key={item.id} className="bg-bg-card2 border border-border rounded-lg p-3">
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <div className="text-sm font-semibold text-text-primary truncate">{item.name}</div>
+            <div className="text-[11px] text-text-muted mt-1">
+              {displayLabel(item.category)} - {displayLabel(item.acquisition)} - peso/riemp. {fillWeightValue(item)} - fascia {impactBandLabel(item.impactBand)}
+            </div>
+            <div className="mt-2 flex flex-wrap gap-1">
+              <button
+                type="button"
+                onClick={() => setActiveFolder(item.folderId && folderLabelById.has(item.folderId) ? item.folderId : UNCATEGORIZED_FOLDER)}
+                className="inline-flex items-center gap-1 rounded-full border border-border bg-bg-card px-2 py-0.5 text-[10px] font-semibold text-text-muted hover:border-violet-primary hover:text-text-primary"
+              >
+                <Folder size={11} />
+                {itemFolder || 'Senza cartella'}
+              </button>
+              <span className="inline-flex rounded-full border border-border bg-bg-card px-2 py-0.5 text-[10px] font-semibold text-text-muted">
+                Fornitore ${(item.supplierPrice ?? 0).toLocaleString()}
+              </span>
+              <span className={`inline-flex rounded-full border px-2 py-0.5 text-[10px] font-semibold ${
+                supplierMargin <= 0
+                  ? 'border-accent-red/30 bg-accent-red/10 text-accent-red'
+                  : 'border-accent-green/30 bg-accent-green/10 text-accent-green'
+              }`}>
+                Margine ${supplierMargin.toLocaleString()}
+              </span>
+            </div>
+          </div>
+          <div className="flex items-center gap-2 flex-shrink-0">
+            <div className="text-right">
+              <div className="text-sm font-bold text-accent-green">${item.price.toLocaleString()}</div>
+              <div className="text-[10px] text-text-muted">{legalHours.toFixed(1)}h legale - {illegalHours.toFixed(1)}h illegale</div>
+            </div>
+            <button className="p-2 text-text-muted hover:bg-accent-blue/10 hover:text-accent-blue rounded-lg" onClick={() => startEditItem(item)} title="Modifica item">
+              <Pencil size={14} />
+            </button>
+            <button className="p-2 text-accent-red hover:bg-accent-red/10 rounded-lg" onClick={() => removeItem(item.id)} title="Elimina item">
+              <Trash2 size={14} />
+            </button>
+          </div>
+        </div>
+        {item.notes && <p className="text-xs text-text-secondary mt-2 leading-relaxed">{item.notes}</p>}
+      </div>
+    );
   };
 
   return (
@@ -587,74 +669,94 @@ export default function Economy() {
         <div className="card space-y-3">
           <div className="flex items-center justify-between gap-3">
             <div>
-              <h2 className="text-sm font-bold text-text-primary">5. Storico item inseriti</h2>
-              <p className="text-xs text-text-muted mt-1">
-                {visibleItems.length} item visualizzati su {items.length} nel catalogo economico.
-              </p>
+              <h2 className="text-sm font-bold text-text-primary">5. Cartelle catalogo</h2>
+              <p className="text-xs text-text-muted mt-1">Entra in una cartella per vedere solo gli item collegati.</p>
             </div>
-            <Package size={18} className="text-accent-blue" />
+            <Folder size={18} className="text-violet-light" />
           </div>
 
-          {items.length === 0 ? (
+          {folderCards.length === 0 ? (
             <div className="bg-bg-card2 border border-border rounded-lg p-4 text-sm text-text-muted">
-              Aggiungi il primo item custom per iniziare a calcolare l'economia.
+              Crea una cartella o aggiungi il primo item per iniziare a organizzare il catalogo.
             </div>
-          ) : visibleItems.length === 0 ? (
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
+              {folderCards.map((folder) => (
+                <button
+                  key={folder.id}
+                  type="button"
+                  onClick={() => setActiveFolder(folder.id)}
+                  className={`bg-bg-card2 border rounded-lg p-4 text-left transition hover:border-violet-primary ${
+                    activeFolder === folder.id ? 'border-violet-primary shadow-glow' : 'border-border'
+                  }`}
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2">
+                        <Folder size={16} className="text-violet-light flex-shrink-0" />
+                        <div className="text-sm font-bold text-text-primary truncate">{folder.name}</div>
+                      </div>
+                      <div className="mt-2 text-xs text-text-muted">
+                        {folder.count} item - valore ${folder.value.toLocaleString()}
+                      </div>
+                    </div>
+                    <span className={folder.count > 0 ? 'badge-violet text-[10px]' : 'badge-gray text-[10px]'}>
+                      {folder.count}
+                    </span>
+                  </div>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+
+      {activeFolder !== ALL_FOLDERS && (
+        <div className="card space-y-3">
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <h2 className="text-sm font-bold text-text-primary">Contenuto cartella: {selectedFolderName}</h2>
+              <p className="text-xs text-text-muted mt-1">
+                {visibleItems.length} item in questa cartella. La lista completa resta sempre disponibile sotto.
+              </p>
+            </div>
+            <button type="button" className="btn-secondary px-3 py-2 text-xs" onClick={() => setActiveFolder(ALL_FOLDERS)}>
+              Tutti gli item
+            </button>
+          </div>
+
+          {visibleItems.length === 0 ? (
             <div className="bg-bg-card2 border border-border rounded-lg p-4 text-sm text-text-muted">
               Nessun item in questa cartella.
             </div>
           ) : (
-            <div className="space-y-2 max-h-[520px] overflow-y-auto pr-1">
-              {visibleItems.map((item) => {
-                const legalHours = item.price / Math.max(1, base.legalIncomeAverage);
-                const illegalHours = item.price / Math.max(1, base.illegalIncomeAverage);
-                const itemFolder = item.folderId ? folderLabelById.get(item.folderId) : '';
-                const supplierMargin = item.price - (item.supplierPrice ?? 0);
-                return (
-                  <div key={item.id} className="bg-bg-card2 border border-border rounded-lg p-3">
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="min-w-0">
-                        <div className="text-sm font-semibold text-text-primary truncate">{item.name}</div>
-                        <div className="text-[11px] text-text-muted mt-1">
-                          {displayLabel(item.category)} - {displayLabel(item.acquisition)} - peso/riemp. {fillWeightValue(item)} - fascia {impactBandLabel(item.impactBand)}
-                        </div>
-                        <div className="mt-2 flex flex-wrap gap-1">
-                          <span className="inline-flex items-center gap-1 rounded-full border border-border bg-bg-card px-2 py-0.5 text-[10px] font-semibold text-text-muted">
-                            <Folder size={11} />
-                            {itemFolder || 'Senza cartella'}
-                          </span>
-                          <span className="inline-flex rounded-full border border-border bg-bg-card px-2 py-0.5 text-[10px] font-semibold text-text-muted">
-                            Fornitore ${(item.supplierPrice ?? 0).toLocaleString()}
-                          </span>
-                          <span className={`inline-flex rounded-full border px-2 py-0.5 text-[10px] font-semibold ${
-                            supplierMargin <= 0
-                              ? 'border-accent-red/30 bg-accent-red/10 text-accent-red'
-                              : 'border-accent-green/30 bg-accent-green/10 text-accent-green'
-                          }`}>
-                            Margine ${supplierMargin.toLocaleString()}
-                          </span>
-                        </div>
-                      </div>
-                      <div className="flex items-center gap-2 flex-shrink-0">
-                        <div className="text-right">
-                          <div className="text-sm font-bold text-accent-green">${item.price.toLocaleString()}</div>
-                          <div className="text-[10px] text-text-muted">{legalHours.toFixed(1)}h legale - {illegalHours.toFixed(1)}h illegale</div>
-                        </div>
-                        <button className="p-2 text-text-muted hover:bg-accent-blue/10 hover:text-accent-blue rounded-lg" onClick={() => startEditItem(item)} title="Modifica item">
-                          <Pencil size={14} />
-                        </button>
-                        <button className="p-2 text-accent-red hover:bg-accent-red/10 rounded-lg" onClick={() => removeItem(item.id)}>
-                          <Trash2 size={14} />
-                        </button>
-                      </div>
-                    </div>
-                    {item.notes && <p className="text-xs text-text-secondary mt-2 leading-relaxed">{item.notes}</p>}
-                  </div>
-                );
-              })}
+            <div className="space-y-2 max-h-[420px] overflow-y-auto pr-1">
+              {visibleItems.map((item) => renderItemCard(item))}
             </div>
           )}
         </div>
+      )}
+
+      <div className="card space-y-3">
+        <div className="flex items-center justify-between gap-3">
+          <div>
+            <h2 className="text-sm font-bold text-text-primary">6. Tutti gli item inseriti</h2>
+            <p className="text-xs text-text-muted mt-1">
+              Lista completa del catalogo economico, indipendente dalla cartella selezionata.
+            </p>
+          </div>
+          <Package size={18} className="text-accent-blue" />
+        </div>
+
+        {items.length === 0 ? (
+          <div className="bg-bg-card2 border border-border rounded-lg p-4 text-sm text-text-muted">
+            Aggiungi il primo item custom per iniziare a calcolare l'economia.
+          </div>
+        ) : (
+          <div className="space-y-2 max-h-[520px] overflow-y-auto pr-1">
+            {items.map((item) => renderItemCard(item))}
+          </div>
+        )}
       </div>
 
       <div className="card bg-accent-blue/5 border-accent-blue/25">
