@@ -1,11 +1,11 @@
 ﻿import { useMemo, useState } from 'react';
-import { AlertTriangle, DollarSign, Package, Plus, Save, Trash2 } from 'lucide-react';
+import { AlertTriangle, DollarSign, Folder, FolderPlus, Package, Plus, Save, Trash2 } from 'lucide-react';
 import { v4 as uuidv4 } from 'uuid';
 import { useStore } from '../store/useStore';
 import ScoreRing from '../components/ui/ScoreRing';
 import WarningCard from '../components/ui/WarningCard';
 import { MIRAGE_PROJECT_ID } from '../lib/project';
-import type { DangerLevel, EconomyCustomItem } from '../../../shared/types';
+import type { DangerLevel, EconomyCustomItem, EconomyFolder } from '../../../shared/types';
 
 const legacyLabels: Record<string, string> = {
   common: 'Comune',
@@ -24,8 +24,12 @@ const legacyLabels: Record<string, string> = {
   loot: 'Loot',
 };
 
-const blankItem = (category = 'Comune', acquisition = 'Negozio'): EconomyCustomItem => ({
+const ALL_FOLDERS = 'all';
+const UNCATEGORIZED_FOLDER = 'uncategorized';
+
+const blankItem = (category = 'Comune', acquisition = 'Negozio', folderId = ''): EconomyCustomItem => ({
   id: uuidv4(),
+  folderId,
   name: '',
   category,
   acquisition,
@@ -82,8 +86,32 @@ export default function Economy() {
     legalIncomeAverage: economy?.legalIncomeAverage ?? 2200,
     illegalIncomeAverage: economy?.illegalIncomeAverage ?? 8000,
   });
+  const [folders, setFolders] = useState<EconomyFolder[]>(economy?.customFolders ?? []);
   const [items, setItems] = useState<EconomyCustomItem[]>(economy?.customItems ?? []);
   const [draft, setDraft] = useState<EconomyCustomItem>(() => blankItem(categories[0], acquisitionMethods[0]));
+  const [folderName, setFolderName] = useState('');
+  const [activeFolder, setActiveFolder] = useState(ALL_FOLDERS);
+
+  const folderLabelById = useMemo(() => {
+    return new Map(folders.map((folder) => [folder.id, folder.name]));
+  }, [folders]);
+
+  const folderStats = useMemo(() => {
+    const stats = new Map<string, number>();
+    items.forEach((item) => {
+      const key = item.folderId && folderLabelById.has(item.folderId) ? item.folderId : UNCATEGORIZED_FOLDER;
+      stats.set(key, (stats.get(key) ?? 0) + 1);
+    });
+    return stats;
+  }, [folderLabelById, items]);
+
+  const visibleItems = useMemo(() => {
+    if (activeFolder === ALL_FOLDERS) return items;
+    if (activeFolder === UNCATEGORIZED_FOLDER) {
+      return items.filter((item) => !item.folderId || !folderLabelById.has(item.folderId));
+    }
+    return items.filter((item) => item.folderId === activeFolder);
+  }, [activeFolder, folderLabelById, items]);
 
   const analysis = useMemo(() => {
     const legalIncome = Math.max(1, base.legalIncomeAverage);
@@ -146,7 +174,7 @@ export default function Economy() {
     return result;
   }, [analysis, base.legalIncomeAverage]);
 
-  const saveEconomy = (nextItems = items) => {
+  const saveEconomy = (nextItems = items, nextFolders = folders) => {
     upsertEconomy({
       projectId,
       currencyName: base.currencyName,
@@ -163,16 +191,54 @@ export default function Economy() {
       balanceScore: analysis.score,
       balanceNotes: 'Score calcolato su entrate, prezzo item, quantita disponibili, peso illegale e rapporto ore/prezzo.',
       antiFarmRules: [],
+      customFolders: nextFolders,
       customItems: nextItems,
     });
+  };
+
+  const addFolder = () => {
+    const name = folderName.trim();
+    if (!name) return;
+    if (folders.some((folder) => folder.name.toLowerCase() === name.toLowerCase())) {
+      setFolderName('');
+      return;
+    }
+
+    const now = new Date().toISOString();
+    const folder = { id: uuidv4(), name, createdAt: now, updatedAt: now };
+    const nextFolders = [...folders, folder];
+    setFolders(nextFolders);
+    setFolderName('');
+    setActiveFolder(folder.id);
+    setDraft((current) => ({ ...current, folderId: folder.id }));
+    saveEconomy(items, nextFolders);
+  };
+
+  const removeFolder = (id: string) => {
+    const folder = folders.find((entry) => entry.id === id);
+    if (!folder) return;
+    if (!confirm(`Eliminare la cartella "${folder.name}"? Gli item resteranno in Senza cartella.`)) return;
+
+    const now = new Date().toISOString();
+    const nextFolders = folders.filter((entry) => entry.id !== id);
+    const nextItems = items.map((item) => (
+      item.folderId === id ? { ...item, folderId: undefined, updatedAt: now } : item
+    ));
+    setFolders(nextFolders);
+    setItems(nextItems);
+    if (activeFolder === id) setActiveFolder(ALL_FOLDERS);
+    if (draft.folderId === id) setDraft({ ...draft, folderId: '' });
+    saveEconomy(nextItems, nextFolders);
   };
 
   const addItem = () => {
     if (!draft.name.trim()) return;
     const now = new Date().toISOString();
+    const nextFolderId = draft.folderId && folderLabelById.has(draft.folderId) ? draft.folderId : undefined;
     const nextItem = {
       ...draft,
       id: uuidv4(),
+      folderId: nextFolderId,
       name: draft.name.trim(),
       category: draft.category.trim() || categories[0],
       acquisition: draft.acquisition.trim() || acquisitionMethods[0],
@@ -196,7 +262,7 @@ export default function Economy() {
     }
 
     setItems(nextItems);
-    setDraft(blankItem(categories[0], acquisitionMethods[0]));
+    setDraft(blankItem(categories[0], acquisitionMethods[0], nextFolderId ?? ''));
     saveEconomy(nextItems);
   };
 
@@ -242,14 +308,102 @@ export default function Economy() {
 
       <div className="card space-y-4">
         <div>
-          <h2 className="text-sm font-bold text-text-primary">2. Item custom</h2>
-          <p className="text-xs text-text-muted mt-1">Inserisci gli item del server con nome, prezzo singolo, quantita, categoria e modo in cui si ottengono.</p>
+          <h2 className="text-sm font-bold text-text-primary">2. Cartelle item</h2>
+          <p className="text-xs text-text-muted mt-1">Crea cartelle custom per ordinare liste come cibi, armi, farmaci o business.</p>
+        </div>
+
+        <div className="flex gap-2">
+          <input
+            className="input"
+            value={folderName}
+            onChange={(e) => setFolderName(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                e.preventDefault();
+                addFolder();
+              }
+            }}
+            placeholder="es. Cibi, Bevande, Armi, Meccanico..."
+          />
+          <button type="button" className="btn-primary flex-shrink-0" onClick={addFolder}>
+            <FolderPlus size={15} /> Crea
+          </button>
+        </div>
+
+        <div className="flex flex-wrap gap-2">
+          <button
+            type="button"
+            onClick={() => setActiveFolder(ALL_FOLDERS)}
+            className={`rounded-lg border px-3 py-2 text-xs font-semibold transition ${
+              activeFolder === ALL_FOLDERS
+                ? 'border-violet-primary bg-violet-primary/20 text-text-primary'
+                : 'border-border bg-bg-card2 text-text-muted hover:text-text-primary'
+            }`}
+          >
+            Tutte <span className="text-text-muted">({items.length})</span>
+          </button>
+          {folders.map((folder) => (
+            <div
+              key={folder.id}
+              className={`flex items-center gap-1 rounded-lg border px-2 py-1.5 transition ${
+                activeFolder === folder.id
+                  ? 'border-violet-primary bg-violet-primary/20'
+                  : 'border-border bg-bg-card2'
+              }`}
+            >
+              <button
+                type="button"
+                onClick={() => {
+                  setActiveFolder(folder.id);
+                  setDraft((current) => ({ ...current, folderId: folder.id }));
+                }}
+                className="flex items-center gap-2 text-xs font-semibold text-text-primary"
+              >
+                <Folder size={13} className="text-violet-light" />
+                {folder.name}
+                <span className="text-text-muted">({folderStats.get(folder.id) ?? 0})</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => removeFolder(folder.id)}
+                className="rounded-md p-1 text-text-muted hover:bg-accent-red/10 hover:text-accent-red"
+                title="Elimina cartella"
+              >
+                <Trash2 size={12} />
+              </button>
+            </div>
+          ))}
+          <button
+            type="button"
+            onClick={() => setActiveFolder(UNCATEGORIZED_FOLDER)}
+            className={`rounded-lg border px-3 py-2 text-xs font-semibold transition ${
+              activeFolder === UNCATEGORIZED_FOLDER
+                ? 'border-violet-primary bg-violet-primary/20 text-text-primary'
+                : 'border-border bg-bg-card2 text-text-muted hover:text-text-primary'
+            }`}
+          >
+            Senza cartella <span className="text-text-muted">({folderStats.get(UNCATEGORIZED_FOLDER) ?? 0})</span>
+          </button>
+        </div>
+      </div>
+
+      <div className="card space-y-4">
+        <div>
+          <h2 className="text-sm font-bold text-text-primary">3. Item custom</h2>
+          <p className="text-xs text-text-muted mt-1">Inserisci gli item del server con cartella, nome, prezzo singolo, quantita, categoria e modo in cui si ottengono.</p>
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
           <div className="sm:col-span-2">
             <label className="label">Nome item</label>
             <input className="input" placeholder="es. Lockpick avanzato" value={draft.name} onChange={(e) => setDraft({ ...draft, name: e.target.value })} />
+          </div>
+          <div>
+            <label className="label">Cartella</label>
+            <select className="select" value={draft.folderId ?? ''} onChange={(e) => setDraft({ ...draft, folderId: e.target.value })}>
+              <option value="">Senza cartella</option>
+              {folders.map((folder) => <option key={folder.id} value={folder.id}>{folder.name}</option>)}
+            </select>
           </div>
           <div>
             <label className="label">Prezzo unitario</label>
@@ -301,7 +455,7 @@ export default function Economy() {
 
       <div className="grid grid-cols-1 lg:grid-cols-[280px_1fr] gap-4">
         <div className="card space-y-4">
-          <h2 className="text-sm font-bold text-text-primary">3. Calcolo economia</h2>
+          <h2 className="text-sm font-bold text-text-primary">4. Calcolo economia</h2>
           <div className="flex justify-center">
             <ScoreRing score={analysis.score} label="Fattibilita" size={96} strokeWidth={7} />
           </div>
@@ -333,8 +487,10 @@ export default function Economy() {
         <div className="card space-y-3">
           <div className="flex items-center justify-between gap-3">
             <div>
-              <h2 className="text-sm font-bold text-text-primary">4. Storico item inseriti</h2>
-              <p className="text-xs text-text-muted mt-1">{items.length} item nel catalogo economico.</p>
+              <h2 className="text-sm font-bold text-text-primary">5. Storico item inseriti</h2>
+              <p className="text-xs text-text-muted mt-1">
+                {visibleItems.length} item visualizzati su {items.length} nel catalogo economico.
+              </p>
             </div>
             <Package size={18} className="text-accent-blue" />
           </div>
@@ -343,11 +499,16 @@ export default function Economy() {
             <div className="bg-bg-card2 border border-border rounded-lg p-4 text-sm text-text-muted">
               Aggiungi il primo item custom per iniziare a calcolare l'economia.
             </div>
+          ) : visibleItems.length === 0 ? (
+            <div className="bg-bg-card2 border border-border rounded-lg p-4 text-sm text-text-muted">
+              Nessun item in questa cartella.
+            </div>
           ) : (
             <div className="space-y-2 max-h-[520px] overflow-y-auto pr-1">
-              {items.map((item) => {
+              {visibleItems.map((item) => {
                 const legalHours = item.price / Math.max(1, base.legalIncomeAverage);
                 const illegalHours = item.price / Math.max(1, base.illegalIncomeAverage);
+                const itemFolder = item.folderId ? folderLabelById.get(item.folderId) : '';
                 return (
                   <div key={item.id} className="bg-bg-card2 border border-border rounded-lg p-3">
                     <div className="flex items-start justify-between gap-3">
@@ -355,6 +516,10 @@ export default function Economy() {
                         <div className="text-sm font-semibold text-text-primary truncate">{item.name}</div>
                         <div className="text-[11px] text-text-muted mt-1">
                           {displayLabel(item.category)} - {displayLabel(item.acquisition)} - qty {item.quantity}
+                        </div>
+                        <div className="mt-2 inline-flex items-center gap-1 rounded-full border border-border bg-bg-card px-2 py-0.5 text-[10px] font-semibold text-text-muted">
+                          <Folder size={11} />
+                          {itemFolder || 'Senza cartella'}
                         </div>
                       </div>
                       <div className="flex items-center gap-2 flex-shrink-0">
@@ -398,4 +563,3 @@ export default function Economy() {
     </div>
   );
 }
-

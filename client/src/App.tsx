@@ -13,6 +13,7 @@ const Economy = lazy(() => import('./pages/Economy'));
 const Settings = lazy(() => import('./pages/Settings'));
 const AuditLog = lazy(() => import('./pages/AuditLog'));
 const Approvals = lazy(() => import('./pages/Approvals'));
+const Administration = lazy(() => import('./pages/Administration'));
 
 function PageLoader() {
   return (
@@ -54,6 +55,8 @@ export default function App() {
             <Route path="/settings" element={<Settings />} />
             <Route path="/audit-log" element={<AuditLog />} />
             <Route path="/approvals" element={<Approvals />} />
+            <Route path="/administration" element={<Administration />} />
+            <Route path="/administrator" element={<Administration />} />
           </Routes>
         </Suspense>
       </DesktopLayout>

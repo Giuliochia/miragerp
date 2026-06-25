@@ -302,9 +302,24 @@ export const DEMO_ECONOMY: EconomyProfile[] = [
       'Ogni missione illegale richiede setup RP documentato in chat',
       'Staff audit mensile su tutti i personaggi con >$500k in banca',
     ],
+    customFolders: [
+      {
+        id: 'eco-folder-illegale',
+        name: 'Illegale',
+        createdAt: '2024-09-25T10:00:00Z',
+        updatedAt: '2024-09-25T10:00:00Z',
+      },
+      {
+        id: 'eco-folder-medico',
+        name: 'Medico',
+        createdAt: '2024-09-25T10:00:00Z',
+        updatedAt: '2024-09-25T10:00:00Z',
+      },
+    ],
     customItems: [
       {
         id: 'eco-burner-phone',
+        folderId: 'eco-folder-illegale',
         name: 'Telefono Burner',
         category: 'illegal',
         price: 800,
@@ -315,6 +330,7 @@ export const DEMO_ECONOMY: EconomyProfile[] = [
       },
       {
         id: 'eco-medkit',
+        folderId: 'eco-folder-medico',
         name: 'Kit Trauma EMS',
         category: 'medical',
         price: 650,
@@ -325,6 +341,7 @@ export const DEMO_ECONOMY: EconomyProfile[] = [
       },
       {
         id: 'eco-pistol',
+        folderId: 'eco-folder-illegale',
         name: 'Pistola Modificata',
         category: 'weapon',
         price: 4500,

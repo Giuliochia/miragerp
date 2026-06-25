@@ -186,6 +186,7 @@ function buildAuditSummary(previous: WorkspaceSnapshot | null, next: WorkspaceSn
       nameKey: 'name',
       fields: [
         { key: 'name', label: 'nome' },
+        { key: 'folderId', label: 'cartella' },
         { key: 'category', label: 'categoria' },
         { key: 'price', label: 'prezzo' },
         { key: 'quantity', label: 'quantita' },
@@ -193,13 +194,27 @@ function buildAuditSummary(previous: WorkspaceSnapshot | null, next: WorkspaceSn
       ],
     }
   );
-  if (!previous || economyChanges.length > 0 || economyItemMessages.length > 0) {
+  const economyFolderMessages = summarizeCollectionChanges(
+    { customFolders: previousEconomy.customFolders },
+    { customFolders: nextEconomy.customFolders },
+    {
+      key: 'customFolders',
+      singular: 'Cartella economia',
+      section: 'Economia',
+      nameKey: 'name',
+      fields: [
+        { key: 'name', label: 'nome' },
+      ],
+    }
+  );
+  if (!previous || economyChanges.length > 0 || economyItemMessages.length > 0 || economyFolderMessages.length > 0) {
     sections.push('Economia');
     if (!previous) {
       messages.push('Workspace inizializzato');
     } else {
       if (economyChanges.length > 0) messages.push(`Economia modificata (${economyChanges.slice(0, 5).join(', ')})`);
       messages.push(...economyItemMessages);
+      messages.push(...economyFolderMessages);
     }
   }
 

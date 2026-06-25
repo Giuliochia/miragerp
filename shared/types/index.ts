@@ -202,13 +202,22 @@ export interface EconomyProfile {
   balanceScore: number;
   balanceNotes: string;
   antiFarmRules: string[];
+  customFolders?: EconomyFolder[];
   customItems?: EconomyCustomItem[];
   createdAt: string;
   updatedAt: string;
 }
 
+export interface EconomyFolder {
+  id: string;
+  name: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
 export interface EconomyCustomItem {
   id: string;
+  folderId?: string;
   name: string;
   category: string;
   price: number;

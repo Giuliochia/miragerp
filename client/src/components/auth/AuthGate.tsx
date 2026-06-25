@@ -96,9 +96,9 @@ export default function AuthGate({ children }: AuthGateProps) {
     if (signUpError) {
       setError(signUpError.message);
     } else if (data.session) {
-      setMessage('Registrazione completata. Sei entrato nel workspace.');
+      setMessage('Registrazione completata. Un amministratore deve abilitare il tuo accesso.');
     } else {
-      setMessage('Registrazione inviata. Controlla la mail per confermare l account, poi torna qui e accedi.');
+      setMessage('Registrazione inviata. Controlla la mail per confermare l account, poi attendi l abilitazione admin.');
       setMode('login');
     }
     setLoading(false);

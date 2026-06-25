@@ -1,6 +1,6 @@
 import { NavLink } from 'react-router-dom';
 import {
-  Home, Swords, Package, FileText, DollarSign, Settings as SettingsIcon, LogOut, History, ClipboardCheck
+  Home, Swords, Package, FileText, DollarSign, Settings as SettingsIcon, LogOut, History, ClipboardCheck, UsersRound
 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 
@@ -15,6 +15,7 @@ const navItems = [
     { path: '/documents', label: 'Documenti Drop', icon: FileText },
   ]},
   { section: 'SISTEMA', items: [
+    { path: '/administration', label: 'Amministrazione', icon: UsersRound },
     { path: '/approvals', label: 'Approvazioni', icon: ClipboardCheck },
     { path: '/settings', label: 'Impostazioni', icon: SettingsIcon },
     { path: '/audit-log', label: 'Storico Staff', icon: History },
@@ -27,6 +28,7 @@ const iconColors: Record<string, string> = {
   '/items': 'text-accent-green',
   '/documents': 'text-text-secondary',
   '/economy': 'text-accent-green',
+  '/administration': 'text-violet-light',
   '/approvals': 'text-violet-light',
   '/settings': 'text-text-secondary',
   '/audit-log': 'text-accent-amber',

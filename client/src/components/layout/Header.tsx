@@ -10,6 +10,7 @@ const routeLabels: Record<string, string> = {
   '/items': 'Drop',
   '/documents': 'Documenti Drop',
   '/economy': 'Economia Mirage',
+  '/administration': 'Amministrazione',
   '/settings': 'Impostazioni',
   '/audit-log': 'Storico Staff',
   '/approvals': 'Centro Approvazioni',
