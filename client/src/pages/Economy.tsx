@@ -1,5 +1,5 @@
 ﻿import { useMemo, useState } from 'react';
-import { AlertTriangle, DollarSign, Folder, FolderPlus, Package, Plus, Save, Trash2 } from 'lucide-react';
+import { AlertTriangle, DollarSign, Folder, FolderPlus, Package, Pencil, Plus, Save, Trash2, X } from 'lucide-react';
 import { v4 as uuidv4 } from 'uuid';
 import { useStore } from '../store/useStore';
 import ScoreRing from '../components/ui/ScoreRing';
@@ -106,6 +106,7 @@ export default function Economy() {
   const [folders, setFolders] = useState<EconomyFolder[]>(economy?.customFolders ?? []);
   const [items, setItems] = useState<EconomyCustomItem[]>(economy?.customItems ?? []);
   const [draft, setDraft] = useState<EconomyCustomItem>(() => blankItem(categories[0], acquisitionMethods[0]));
+  const [editingItemId, setEditingItemId] = useState('');
   const [folderName, setFolderName] = useState('');
   const [activeFolder, setActiveFolder] = useState(ALL_FOLDERS);
 
@@ -266,13 +267,34 @@ export default function Economy() {
     saveEconomy(nextItems, nextFolders);
   };
 
-  const addItem = () => {
+  const resetDraft = (folderId = draft.folderId ?? '') => {
+    setDraft(blankItem(categories[0], acquisitionMethods[0], folderId));
+    setEditingItemId('');
+  };
+
+  const startEditItem = (item: EconomyCustomItem) => {
+    setEditingItemId(item.id);
+    setDraft({
+      ...item,
+      supplierPrice: item.supplierPrice ?? 0,
+      fillWeight: fillWeightValue(item),
+      impactBand: item.impactBand ?? 'medium',
+      quantity: fillWeightValue(item),
+    });
+    if (item.folderId && folderLabelById.has(item.folderId)) {
+      setActiveFolder(item.folderId);
+    } else {
+      setActiveFolder(UNCATEGORIZED_FOLDER);
+    }
+  };
+
+  const saveItem = () => {
     if (!draft.name.trim()) return;
     const now = new Date().toISOString();
     const nextFolderId = draft.folderId && folderLabelById.has(draft.folderId) ? draft.folderId : undefined;
     const nextItem = {
       ...draft,
-      id: uuidv4(),
+      id: editingItemId || uuidv4(),
       folderId: nextFolderId,
       name: draft.name.trim(),
       category: draft.category.trim() || categories[0],
@@ -283,10 +305,12 @@ export default function Economy() {
       impactBand: draft.impactBand ?? 'medium',
       quantity: Math.max(0, fillWeightValue(draft)),
       restockPerDay: 0,
-      createdAt: now,
+      createdAt: draft.createdAt ?? now,
       updatedAt: now,
     };
-    const nextItems = [nextItem, ...items];
+    const nextItems = editingItemId
+      ? items.map((item) => (item.id === editingItemId ? nextItem : item))
+      : [nextItem, ...items];
     const nextCategory = nextItem.category.trim();
     const nextAcquisition = nextItem.acquisition.trim();
     const nextCategories = categories.includes(nextCategory) ? categories : [...categories, nextCategory];
@@ -300,13 +324,14 @@ export default function Economy() {
     }
 
     setItems(nextItems);
-    setDraft(blankItem(categories[0], acquisitionMethods[0], nextFolderId ?? ''));
+    resetDraft(nextFolderId ?? '');
     saveEconomy(nextItems);
   };
 
   const removeItem = (id: string) => {
     const nextItems = items.filter((item) => item.id !== id);
     setItems(nextItems);
+    if (editingItemId === id) resetDraft();
     saveEconomy(nextItems);
   };
 
@@ -426,9 +451,20 @@ export default function Economy() {
       </div>
 
       <div className="card space-y-4">
-        <div>
-          <h2 className="text-sm font-bold text-text-primary">3. Item custom</h2>
-          <p className="text-xs text-text-muted mt-1">Inserisci gli item del server con cartella, prezzo vendita, prezzo fornitore, peso/riempimento e fascia impatto.</p>
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <h2 className="text-sm font-bold text-text-primary">{editingItemId ? '3. Modifica item custom' : '3. Item custom'}</h2>
+            <p className="text-xs text-text-muted mt-1">
+              {editingItemId
+                ? 'Aggiorna i dati dell item selezionato nello storico.'
+                : 'Inserisci gli item del server con cartella, prezzo vendita, prezzo fornitore, peso/riempimento e fascia impatto.'}
+            </p>
+          </div>
+          {editingItemId && (
+            <button type="button" className="btn-secondary px-3 py-2 text-xs" onClick={() => resetDraft()}>
+              <X size={14} /> Annulla
+            </button>
+          )}
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
@@ -506,8 +542,9 @@ export default function Economy() {
             <label className="label">Note</label>
             <input className="input" placeholder="limiti, licenze, rischio abuso..." value={draft.notes} onChange={(e) => setDraft({ ...draft, notes: e.target.value })} />
           </div>
-          <button className="btn-primary sm:col-span-2 lg:col-span-4" onClick={addItem}>
-            <Plus size={14} /> Aggiungi item allo storico
+          <button className="btn-primary sm:col-span-2 lg:col-span-4" onClick={saveItem}>
+            {editingItemId ? <Save size={14} /> : <Plus size={14} />}
+            {editingItemId ? 'Salva modifiche item' : 'Aggiungi item allo storico'}
           </button>
         </div>
       </div>
@@ -603,6 +640,9 @@ export default function Economy() {
                           <div className="text-sm font-bold text-accent-green">${item.price.toLocaleString()}</div>
                           <div className="text-[10px] text-text-muted">{legalHours.toFixed(1)}h legale - {illegalHours.toFixed(1)}h illegale</div>
                         </div>
+                        <button className="p-2 text-text-muted hover:bg-accent-blue/10 hover:text-accent-blue rounded-lg" onClick={() => startEditItem(item)} title="Modifica item">
+                          <Pencil size={14} />
+                        </button>
                         <button className="p-2 text-accent-red hover:bg-accent-red/10 rounded-lg" onClick={() => removeItem(item.id)}>
                           <Trash2 size={14} />
                         </button>
