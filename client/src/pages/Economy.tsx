@@ -108,6 +108,7 @@ export default function Economy() {
   const [draft, setDraft] = useState<EconomyCustomItem>(() => blankItem(categories[0], acquisitionMethods[0]));
   const [editingItemId, setEditingItemId] = useState('');
   const [folderName, setFolderName] = useState('');
+  const [editingFolderId, setEditingFolderId] = useState('');
   const [activeFolder, setActiveFolder] = useState(ALL_FOLDERS);
 
   const folderLabelById = useMemo(() => {
@@ -261,15 +262,31 @@ export default function Economy() {
     });
   };
 
-  const addFolder = () => {
+  const saveFolder = () => {
     const name = folderName.trim();
     if (!name) return;
-    if (folders.some((folder) => folder.name.toLowerCase() === name.toLowerCase())) {
+
+    const duplicate = folders.some((folder) => (
+      folder.id !== editingFolderId && folder.name.toLowerCase() === name.toLowerCase()
+    ));
+    if (duplicate) {
       setFolderName('');
+      setEditingFolderId('');
       return;
     }
 
     const now = new Date().toISOString();
+    if (editingFolderId) {
+      const nextFolders = folders.map((folder) => (
+        folder.id === editingFolderId ? { ...folder, name, updatedAt: now } : folder
+      ));
+      setFolders(nextFolders);
+      setFolderName('');
+      setEditingFolderId('');
+      saveEconomy(items, nextFolders);
+      return;
+    }
+
     const folder = { id: uuidv4(), name, createdAt: now, updatedAt: now };
     const nextFolders = [...folders, folder];
     setFolders(nextFolders);
@@ -277,6 +294,17 @@ export default function Economy() {
     setActiveFolder(folder.id);
     setDraft((current) => ({ ...current, folderId: folder.id }));
     saveEconomy(items, nextFolders);
+  };
+
+  const startEditFolder = (folder: EconomyFolder) => {
+    setEditingFolderId(folder.id);
+    setFolderName(folder.name);
+    setActiveFolder(folder.id);
+  };
+
+  const cancelFolderEdit = () => {
+    setEditingFolderId('');
+    setFolderName('');
   };
 
   const removeFolder = (id: string) => {
@@ -292,6 +320,7 @@ export default function Economy() {
     setFolders(nextFolders);
     setItems(nextItems);
     if (activeFolder === id) setActiveFolder(ALL_FOLDERS);
+    if (editingFolderId === id) cancelFolderEdit();
     if (draft.folderId === id) setDraft({ ...draft, folderId: '' });
     saveEconomy(nextItems, nextFolders);
   };
@@ -465,14 +494,20 @@ export default function Economy() {
             onKeyDown={(e) => {
               if (e.key === 'Enter') {
                 e.preventDefault();
-                addFolder();
+                saveFolder();
               }
             }}
-            placeholder="es. Cibi, Bevande, Armi, Meccanico..."
+            placeholder={editingFolderId ? 'Modifica nome cartella...' : 'es. Cibi, Bevande, Armi, Meccanico...'}
           />
-          <button type="button" className="btn-primary flex-shrink-0" onClick={addFolder}>
-            <FolderPlus size={15} /> Crea
+          <button type="button" className="btn-primary flex-shrink-0" onClick={saveFolder}>
+            {editingFolderId ? <Save size={15} /> : <FolderPlus size={15} />}
+            {editingFolderId ? 'Salva' : 'Crea'}
           </button>
+          {editingFolderId && (
+            <button type="button" className="btn-secondary flex-shrink-0 px-3" onClick={cancelFolderEdit} title="Annulla modifica cartella">
+              <X size={15} />
+            </button>
+          )}
         </div>
 
         <div className="flex flex-wrap gap-2">
@@ -507,6 +542,14 @@ export default function Economy() {
                 <Folder size={13} className="text-violet-light" />
                 {folder.name}
                 <span className="text-text-muted">({folderStats.get(folder.id) ?? 0})</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => startEditFolder(folder)}
+                className="rounded-md p-1 text-text-muted hover:bg-accent-blue/10 hover:text-accent-blue"
+                title="Modifica nome cartella"
+              >
+                <Pencil size={12} />
               </button>
               <button
                 type="button"
