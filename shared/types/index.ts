@@ -210,6 +210,7 @@ export interface EconomyProfile {
 
 export interface EconomyFolder {
   id: string;
+  parentId?: string;
   name: string;
   createdAt?: string;
   updatedAt?: string;

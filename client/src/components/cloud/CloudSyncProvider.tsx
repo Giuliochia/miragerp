@@ -213,6 +213,7 @@ function buildAuditSummary(previous: WorkspaceSnapshot | null, next: WorkspaceSn
       nameKey: 'name',
       fields: [
         { key: 'name', label: 'nome' },
+        { key: 'parentId', label: 'cartella master' },
       ],
     }
   );

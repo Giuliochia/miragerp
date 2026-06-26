@@ -37,17 +37,37 @@ const iconColors: Record<string, string> = {
   '/audit-log': 'text-accent-amber',
 };
 
+function descendantFolderIds(folders: Array<{ id: string; parentId?: string }>, parentId: string) {
+  const result: string[] = [];
+  const visit = (id: string) => {
+    folders
+      .filter((folder) => folder.parentId === id)
+      .forEach((folder) => {
+        result.push(folder.id);
+        visit(folder.id);
+      });
+  };
+  visit(parentId);
+  return result;
+}
+
 export default function Sidebar() {
   const [economyOpen, setEconomyOpen] = useState(true);
+  const [openMasters, setOpenMasters] = useState<Record<string, boolean>>({});
   const location = useLocation();
   const economy = useStore((s) => s.getProjectEconomy(MIRAGE_PROJECT_ID));
   const economyFolders = economy?.customFolders ?? [];
   const economyItems = economy?.customItems ?? [];
-  const folderCounts = new Map<string, number>();
-  economyItems.forEach((item) => {
-    if (!item.folderId) return;
-    folderCounts.set(item.folderId, (folderCounts.get(item.folderId) ?? 0) + 1);
+  const masterFolders = economyFolders.filter((folder) => !folder.parentId);
+  const childFoldersByParent = new Map<string, typeof economyFolders>();
+  economyFolders.forEach((folder) => {
+    if (!folder.parentId) return;
+    childFoldersByParent.set(folder.parentId, [...(childFoldersByParent.get(folder.parentId) ?? []), folder]);
   });
+  const countFolderItems = (folderId: string) => {
+    const ids = [folderId, ...descendantFolderIds(economyFolders, folderId)];
+    return economyItems.filter((item) => item.folderId && ids.includes(item.folderId)).length;
+  };
   const selectedEconomyFolder = new URLSearchParams(location.search).get('folder');
 
   const handleSignOut = () => {
@@ -117,25 +137,64 @@ export default function Sidebar() {
                         </button>
                       )}
                     </div>
-                    {isEconomy && economyOpen && economyFolders.length > 0 && (
+                    {isEconomy && economyOpen && masterFolders.length > 0 && (
                       <div className="ml-6 mt-1 space-y-0.5 border-l border-border/70 pl-2">
-                        {economyFolders.map((folder) => (
-                          <NavLink
-                            key={folder.id}
-                            to={`/economy?folder=${encodeURIComponent(folder.id)}`}
-                            className={() =>
-                              `flex items-center gap-2 rounded-lg border px-2 py-2 text-xs font-medium transition ${
-                                location.pathname === '/economy' && selectedEconomyFolder === folder.id
-                                  ? 'border-violet-primary/30 bg-violet-primary/10 text-text-primary'
-                                  : 'border-transparent text-text-muted hover:bg-bg-card2 hover:text-text-primary'
-                              }`
-                            }
-                          >
-                            <Folder size={13} className="text-violet-light flex-shrink-0" />
-                            <span className="min-w-0 flex-1 truncate">{folder.name}</span>
-                            <span className="text-[10px] text-text-muted">{folderCounts.get(folder.id) ?? 0}</span>
-                          </NavLink>
-                        ))}
+                        {masterFolders.map((folder) => {
+                          const children = childFoldersByParent.get(folder.id) ?? [];
+                          const masterOpen = openMasters[folder.id] ?? true;
+                          const selected = location.pathname === '/economy' && selectedEconomyFolder === folder.id;
+                          return (
+                            <div key={folder.id}>
+                              <div className="flex items-center gap-1">
+                                <NavLink
+                                  to={`/economy?folder=${encodeURIComponent(folder.id)}`}
+                                  className={() =>
+                                    `flex min-w-0 flex-1 items-center gap-2 rounded-lg border px-2 py-2 text-xs font-medium transition ${
+                                      selected
+                                        ? 'border-violet-primary/30 bg-violet-primary/10 text-text-primary'
+                                        : 'border-transparent text-text-muted hover:bg-bg-card2 hover:text-text-primary'
+                                    }`
+                                  }
+                                >
+                                  <Folder size={13} className="text-violet-light flex-shrink-0" />
+                                  <span className="min-w-0 flex-1 truncate">{folder.name}</span>
+                                  <span className="text-[10px] text-text-muted">{countFolderItems(folder.id)}</span>
+                                </NavLink>
+                                {children.length > 0 && (
+                                  <button
+                                    type="button"
+                                    onClick={() => setOpenMasters((current) => ({ ...current, [folder.id]: !masterOpen }))}
+                                    className="rounded-md p-1 text-text-muted hover:bg-bg-card2 hover:text-text-primary"
+                                    title={masterOpen ? 'Nascondi sottocartelle' : 'Mostra sottocartelle'}
+                                  >
+                                    {masterOpen ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
+                                  </button>
+                                )}
+                              </div>
+                              {masterOpen && children.length > 0 && (
+                                <div className="ml-4 mt-0.5 space-y-0.5 border-l border-border/50 pl-2">
+                                  {children.map((child) => (
+                                    <NavLink
+                                      key={child.id}
+                                      to={`/economy?folder=${encodeURIComponent(child.id)}`}
+                                      className={() =>
+                                        `flex items-center gap-2 rounded-lg border px-2 py-1.5 text-[11px] font-medium transition ${
+                                          location.pathname === '/economy' && selectedEconomyFolder === child.id
+                                            ? 'border-violet-primary/30 bg-violet-primary/10 text-text-primary'
+                                            : 'border-transparent text-text-muted hover:bg-bg-card2 hover:text-text-primary'
+                                        }`
+                                      }
+                                    >
+                                      <Folder size={12} className="text-accent-blue flex-shrink-0" />
+                                      <span className="min-w-0 flex-1 truncate">{child.name}</span>
+                                      <span className="text-[10px] text-text-muted">{countFolderItems(child.id)}</span>
+                                    </NavLink>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })}
                       </div>
                     )}
                   </div>

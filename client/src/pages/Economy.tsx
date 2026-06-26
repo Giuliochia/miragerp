@@ -29,6 +29,20 @@ const legacyLabels: Record<string, string> = {
 const ALL_FOLDERS = 'all';
 const UNCATEGORIZED_FOLDER = 'uncategorized';
 
+function descendantFolderIds(folders: EconomyFolder[], parentId: string) {
+  const result: string[] = [];
+  const visit = (id: string) => {
+    folders
+      .filter((folder) => folder.parentId === id)
+      .forEach((folder) => {
+        result.push(folder.id);
+        visit(folder.id);
+      });
+  };
+  visit(parentId);
+  return result;
+}
+
 const impactBands = [
   { value: 'low', label: 'Bassa' },
   { value: 'medium', label: 'Media' },
@@ -111,12 +125,31 @@ export default function Economy() {
   const [draft, setDraft] = useState<EconomyCustomItem>(() => blankItem(categories[0], acquisitionMethods[0]));
   const [editingItemId, setEditingItemId] = useState('');
   const [folderName, setFolderName] = useState('');
+  const [folderParentId, setFolderParentId] = useState('');
   const [editingFolderId, setEditingFolderId] = useState('');
   const [activeFolder, setActiveFolder] = useState(searchParams.get('folder') ?? ALL_FOLDERS);
 
   const folderLabelById = useMemo(() => {
     return new Map(folders.map((folder) => [folder.id, folder.name]));
   }, [folders]);
+
+  const masterFolders = useMemo(() => folders.filter((folder) => !folder.parentId), [folders]);
+  const childFoldersByParent = useMemo(() => {
+    const grouped = new Map<string, EconomyFolder[]>();
+    folders.forEach((folder) => {
+      if (!folder.parentId) return;
+      grouped.set(folder.parentId, [...(grouped.get(folder.parentId) ?? []), folder]);
+    });
+    return grouped;
+  }, [folders]);
+
+  const blockedParentIds = useMemo(() => (
+    editingFolderId ? [editingFolderId, ...descendantFolderIds(folders, editingFolderId)] : []
+  ), [editingFolderId, folders]);
+
+  const parentFolderOptions = useMemo(() => (
+    folders.filter((folder) => !folder.parentId && !blockedParentIds.includes(folder.id))
+  ), [blockedParentIds, folders]);
 
   useEffect(() => {
     const folderFromUrl = searchParams.get('folder') ?? ALL_FOLDERS;
@@ -153,20 +186,25 @@ export default function Economy() {
 
   const folderStats = useMemo(() => {
     const stats = new Map<string, number>();
-    items.forEach((item) => {
-      const key = item.folderId && folderLabelById.has(item.folderId) ? item.folderId : UNCATEGORIZED_FOLDER;
-      stats.set(key, (stats.get(key) ?? 0) + 1);
+    folders.forEach((folder) => {
+      const ids = [folder.id, ...descendantFolderIds(folders, folder.id)];
+      stats.set(folder.id, items.filter((item) => item.folderId && ids.includes(item.folderId)).length);
     });
+    stats.set(
+      UNCATEGORIZED_FOLDER,
+      items.filter((item) => !item.folderId || !folderLabelById.has(item.folderId)).length
+    );
     return stats;
-  }, [folderLabelById, items]);
+  }, [folderLabelById, folders, items]);
 
   const visibleItems = useMemo(() => {
     if (activeFolder === ALL_FOLDERS) return items;
     if (activeFolder === UNCATEGORIZED_FOLDER) {
       return items.filter((item) => !item.folderId || !folderLabelById.has(item.folderId));
     }
-    return items.filter((item) => item.folderId === activeFolder);
-  }, [activeFolder, folderLabelById, items]);
+    const ids = [activeFolder, ...descendantFolderIds(folders, activeFolder)];
+    return items.filter((item) => item.folderId && ids.includes(item.folderId));
+  }, [activeFolder, folderLabelById, folders, items]);
 
   const selectedFolderName = activeFolder === UNCATEGORIZED_FOLDER
     ? 'Senza cartella'
@@ -174,9 +212,11 @@ export default function Economy() {
 
   const folderCards = useMemo(() => {
     const folderSummaries = folders.map((folder) => {
-      const folderItems = items.filter((item) => item.folderId === folder.id);
+      const ids = [folder.id, ...descendantFolderIds(folders, folder.id)];
+      const folderItems = items.filter((item) => item.folderId && ids.includes(item.folderId));
       return {
         id: folder.id,
+        parentId: folder.parentId,
         name: folder.name,
         items: folderItems,
         count: folderItems.length,
@@ -302,11 +342,15 @@ export default function Economy() {
     const name = folderName.trim();
     if (!name) return;
 
+    const nextParentId = folderParentId || undefined;
     const duplicate = folders.some((folder) => (
-      folder.id !== editingFolderId && folder.name.toLowerCase() === name.toLowerCase()
+      folder.id !== editingFolderId
+      && (folder.parentId ?? '') === (nextParentId ?? '')
+      && folder.name.toLowerCase() === name.toLowerCase()
     ));
     if (duplicate) {
       setFolderName('');
+      setFolderParentId('');
       setEditingFolderId('');
       return;
     }
@@ -314,19 +358,21 @@ export default function Economy() {
     const now = new Date().toISOString();
     if (editingFolderId) {
       const nextFolders = folders.map((folder) => (
-        folder.id === editingFolderId ? { ...folder, name, updatedAt: now } : folder
+        folder.id === editingFolderId ? { ...folder, name, parentId: nextParentId, updatedAt: now } : folder
       ));
       setFolders(nextFolders);
       setFolderName('');
+      setFolderParentId('');
       setEditingFolderId('');
       saveEconomy(items, nextFolders);
       return;
     }
 
-    const folder = { id: uuidv4(), name, createdAt: now, updatedAt: now };
+    const folder = { id: uuidv4(), parentId: nextParentId, name, createdAt: now, updatedAt: now };
     const nextFolders = [...folders, folder];
     setFolders(nextFolders);
     setFolderName('');
+    setFolderParentId('');
     setActiveFolder(folder.id);
     setDraft((current) => ({ ...current, folderId: folder.id }));
     saveEconomy(items, nextFolders);
@@ -335,29 +381,33 @@ export default function Economy() {
   const startEditFolder = (folder: EconomyFolder) => {
     setEditingFolderId(folder.id);
     setFolderName(folder.name);
+    setFolderParentId(folder.parentId ?? '');
     setActiveFolder(folder.id);
   };
 
   const cancelFolderEdit = () => {
     setEditingFolderId('');
     setFolderName('');
+    setFolderParentId('');
   };
 
   const removeFolder = (id: string) => {
     const folder = folders.find((entry) => entry.id === id);
     if (!folder) return;
-    if (!confirm(`Eliminare la cartella "${folder.name}"? Gli item resteranno in Senza cartella.`)) return;
+    const removedFolderIds = [id, ...descendantFolderIds(folders, id)];
+    const childCount = removedFolderIds.length - 1;
+    if (!confirm(`Eliminare la cartella "${folder.name}"${childCount > 0 ? ` e ${childCount} sottocartelle` : ''}? Gli item resteranno in Senza cartella.`)) return;
 
     const now = new Date().toISOString();
-    const nextFolders = folders.filter((entry) => entry.id !== id);
+    const nextFolders = folders.filter((entry) => !removedFolderIds.includes(entry.id));
     const nextItems = items.map((item) => (
-      item.folderId === id ? { ...item, folderId: undefined, updatedAt: now } : item
+      item.folderId && removedFolderIds.includes(item.folderId) ? { ...item, folderId: undefined, updatedAt: now } : item
     ));
     setFolders(nextFolders);
     setItems(nextItems);
-    if (activeFolder === id) setActiveFolder(ALL_FOLDERS);
-    if (editingFolderId === id) cancelFolderEdit();
-    if (draft.folderId === id) setDraft({ ...draft, folderId: '' });
+    if (removedFolderIds.includes(activeFolder)) setActiveFolder(ALL_FOLDERS);
+    if (removedFolderIds.includes(editingFolderId)) cancelFolderEdit();
+    if (draft.folderId && removedFolderIds.includes(draft.folderId)) setDraft({ ...draft, folderId: '' });
     saveEconomy(nextItems, nextFolders);
   };
 
@@ -522,19 +572,33 @@ export default function Economy() {
           <p className="text-xs text-text-muted mt-1">Crea cartelle custom per ordinare liste come cibi, armi, farmaci o business.</p>
         </div>
 
-        <div className="flex gap-2">
-          <input
-            className="input"
-            value={folderName}
-            onChange={(e) => setFolderName(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') {
-                e.preventDefault();
-                saveFolder();
-              }
-            }}
-            placeholder={editingFolderId ? 'Modifica nome cartella...' : 'es. Cibi, Bevande, Armi, Meccanico...'}
-          />
+        <div className="grid gap-2 lg:grid-cols-[1fr,260px,auto,auto]">
+          <div>
+            <label className="label">Nome cartella</label>
+            <input
+              className="input"
+              value={folderName}
+              onChange={(e) => setFolderName(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  e.preventDefault();
+                  saveFolder();
+                }
+              }}
+              placeholder={editingFolderId ? 'Modifica nome cartella...' : 'es. Cibi, Bevande, Armi, Meccanico...'}
+            />
+          </div>
+          <div>
+            <label className="label">Dentro cartella master</label>
+            <select className="select" value={folderParentId} onChange={(e) => setFolderParentId(e.target.value)}>
+              <option value="">Nessuna: cartella master</option>
+              {parentFolderOptions.map((folder) => (
+                <option key={folder.id} value={folder.id}>
+                  {folder.parentId ? '- ' : ''}{folder.name}
+                </option>
+              ))}
+            </select>
+          </div>
           <button type="button" className="btn-primary flex-shrink-0" onClick={saveFolder}>
             {editingFolderId ? <Save size={15} /> : <FolderPlus size={15} />}
             {editingFolderId ? 'Salva' : 'Crea'}
@@ -558,43 +622,50 @@ export default function Economy() {
           >
             Tutte <span className="text-text-muted">({items.length})</span>
           </button>
-          {folders.map((folder) => (
-            <div
-              key={folder.id}
-              className={`flex items-center gap-1 rounded-lg border px-2 py-1.5 transition ${
-                activeFolder === folder.id
-                  ? 'border-violet-primary bg-violet-primary/20'
-                  : 'border-border bg-bg-card2'
-              }`}
-            >
-              <button
-                type="button"
-                onClick={() => {
-                  setActiveFolder(folder.id);
-                  setDraft((current) => ({ ...current, folderId: folder.id }));
-                }}
-                className="flex items-center gap-2 text-xs font-semibold text-text-primary"
-              >
-                <Folder size={13} className="text-violet-light" />
-                {folder.name}
-                <span className="text-text-muted">({folderStats.get(folder.id) ?? 0})</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => startEditFolder(folder)}
-                className="rounded-md p-1 text-text-muted hover:bg-accent-blue/10 hover:text-accent-blue"
-                title="Modifica nome cartella"
-              >
-                <Pencil size={12} />
-              </button>
-              <button
-                type="button"
-                onClick={() => removeFolder(folder.id)}
-                className="rounded-md p-1 text-text-muted hover:bg-accent-red/10 hover:text-accent-red"
-                title="Elimina cartella"
-              >
-                <Trash2 size={12} />
-              </button>
+          {masterFolders.map((master) => (
+            <div key={master.id} className="flex flex-wrap items-center gap-1">
+              {[master, ...(childFoldersByParent.get(master.id) ?? [])].map((folder) => {
+                const isChild = Boolean(folder.parentId);
+                return (
+                  <div
+                    key={folder.id}
+                    className={`flex items-center gap-1 rounded-lg border px-2 py-1.5 transition ${
+                      activeFolder === folder.id
+                        ? 'border-violet-primary bg-violet-primary/20'
+                        : 'border-border bg-bg-card2'
+                    }`}
+                  >
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setActiveFolder(folder.id);
+                        setDraft((current) => ({ ...current, folderId: folder.id }));
+                      }}
+                      className="flex items-center gap-2 text-xs font-semibold text-text-primary"
+                    >
+                      <Folder size={13} className={isChild ? 'text-accent-blue' : 'text-violet-light'} />
+                      <span>{isChild ? '- ' : ''}{folder.name}</span>
+                      <span className="text-text-muted">({folderStats.get(folder.id) ?? 0})</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => startEditFolder(folder)}
+                      className="rounded-md p-1 text-text-muted hover:bg-accent-blue/10 hover:text-accent-blue"
+                      title="Modifica nome cartella"
+                    >
+                      <Pencil size={12} />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => removeFolder(folder.id)}
+                      className="rounded-md p-1 text-text-muted hover:bg-accent-red/10 hover:text-accent-red"
+                      title="Elimina cartella"
+                    >
+                      <Trash2 size={12} />
+                    </button>
+                  </div>
+                );
+              })}
             </div>
           ))}
           <button
@@ -637,7 +708,14 @@ export default function Economy() {
             <label className="label">Cartella</label>
             <select className="select" value={draft.folderId ?? ''} onChange={(e) => setDraft({ ...draft, folderId: e.target.value })}>
               <option value="">Senza cartella</option>
-              {folders.map((folder) => <option key={folder.id} value={folder.id}>{folder.name}</option>)}
+              {masterFolders.map((master) => (
+                <optgroup key={master.id} label={master.name}>
+                  <option value={master.id}>{master.name}</option>
+                  {(childFoldersByParent.get(master.id) ?? []).map((folder) => (
+                    <option key={folder.id} value={folder.id}>- {folder.name}</option>
+                  ))}
+                </optgroup>
+              ))}
             </select>
           </div>
           <div>
