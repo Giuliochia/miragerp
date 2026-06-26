@@ -1,5 +1,7 @@
 ﻿import { useMemo, useState } from 'react';
 import { AlertTriangle, DollarSign, Folder, FolderPlus, Package, Pencil, Plus, Save, Trash2, X } from 'lucide-react';
+import { useEffect } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { v4 as uuidv4 } from 'uuid';
 import { useStore } from '../store/useStore';
 import ScoreRing from '../components/ui/ScoreRing';
@@ -86,6 +88,7 @@ function scoreLabel(score: number, healthyThreshold: number, warningThreshold: n
 }
 
 export default function Economy() {
+  const [searchParams, setSearchParams] = useSearchParams();
   const currentProjectId = useStore((s) => s.currentProjectId);
   const projectId = currentProjectId ?? MIRAGE_PROJECT_ID;
   const economy = useStore((s) => s.getProjectEconomy(projectId));
@@ -109,11 +112,44 @@ export default function Economy() {
   const [editingItemId, setEditingItemId] = useState('');
   const [folderName, setFolderName] = useState('');
   const [editingFolderId, setEditingFolderId] = useState('');
-  const [activeFolder, setActiveFolder] = useState(ALL_FOLDERS);
+  const [activeFolder, setActiveFolder] = useState(searchParams.get('folder') ?? ALL_FOLDERS);
 
   const folderLabelById = useMemo(() => {
     return new Map(folders.map((folder) => [folder.id, folder.name]));
   }, [folders]);
+
+  useEffect(() => {
+    const folderFromUrl = searchParams.get('folder') ?? ALL_FOLDERS;
+    const validFolder = folderFromUrl === ALL_FOLDERS
+      || folderFromUrl === UNCATEGORIZED_FOLDER
+      || folders.some((folder) => folder.id === folderFromUrl);
+
+    if (validFolder && folderFromUrl !== activeFolder) {
+      setActiveFolder(folderFromUrl);
+    }
+  }, [activeFolder, folders, searchParams]);
+
+  useEffect(() => {
+    const validFolder = activeFolder === ALL_FOLDERS
+      || activeFolder === UNCATEGORIZED_FOLDER
+      || folders.some((folder) => folder.id === activeFolder);
+
+    if (!validFolder) {
+      setActiveFolder(ALL_FOLDERS);
+      return;
+    }
+
+    const nextParams = new URLSearchParams(searchParams);
+    if (activeFolder === ALL_FOLDERS) {
+      nextParams.delete('folder');
+    } else {
+      nextParams.set('folder', activeFolder);
+    }
+
+    if (nextParams.toString() !== searchParams.toString()) {
+      setSearchParams(nextParams, { replace: true });
+    }
+  }, [activeFolder, folders, searchParams, setSearchParams]);
 
   const folderStats = useMemo(() => {
     const stats = new Map<string, number>();
