@@ -133,23 +133,25 @@ export default function Economy() {
     return new Map(folders.map((folder) => [folder.id, folder.name]));
   }, [folders]);
 
-  const masterFolders = useMemo(() => folders.filter((folder) => !folder.parentId), [folders]);
+  const validFolderIds = useMemo(() => new Set(folders.map((folder) => folder.id)), [folders]);
+  const isMasterFolder = (folder: EconomyFolder) => !folder.parentId || !validFolderIds.has(folder.parentId);
+  const masterFolders = useMemo(() => folders.filter(isMasterFolder), [folders, validFolderIds]);
   const childFoldersByParent = useMemo(() => {
     const grouped = new Map<string, EconomyFolder[]>();
     folders.forEach((folder) => {
-      if (!folder.parentId) return;
+      if (!folder.parentId || !validFolderIds.has(folder.parentId)) return;
       grouped.set(folder.parentId, [...(grouped.get(folder.parentId) ?? []), folder]);
     });
     return grouped;
-  }, [folders]);
+  }, [folders, validFolderIds]);
 
   const blockedParentIds = useMemo(() => (
     editingFolderId ? [editingFolderId, ...descendantFolderIds(folders, editingFolderId)] : []
   ), [editingFolderId, folders]);
 
   const parentFolderOptions = useMemo(() => (
-    folders.filter((folder) => !folder.parentId && !blockedParentIds.includes(folder.id))
-  ), [blockedParentIds, folders]);
+    folders.filter((folder) => isMasterFolder(folder) && !blockedParentIds.includes(folder.id))
+  ), [blockedParentIds, folders, validFolderIds]);
 
   useEffect(() => {
     const folderFromUrl = searchParams.get('folder') ?? ALL_FOLDERS;
@@ -342,7 +344,7 @@ export default function Economy() {
     const name = folderName.trim();
     if (!name) return;
 
-    const nextParentId = folderParentId || undefined;
+    const nextParentId = folderParentId && validFolderIds.has(folderParentId) ? folderParentId : undefined;
     const duplicate = folders.some((folder) => (
       folder.id !== editingFolderId
       && (folder.parentId ?? '') === (nextParentId ?? '')
@@ -591,13 +593,14 @@ export default function Economy() {
           <div>
             <label className="label">Dentro cartella master</label>
             <select className="select" value={folderParentId} onChange={(e) => setFolderParentId(e.target.value)}>
-              <option value="">Nessuna: cartella master</option>
+              <option value="">Nessuna: crea cartella master</option>
               {parentFolderOptions.map((folder) => (
                 <option key={folder.id} value={folder.id}>
                   {folder.parentId ? '- ' : ''}{folder.name}
                 </option>
               ))}
             </select>
+            <div className="text-[10px] text-text-muted mt-1">Lascia Nessuna per creare una master, oppure scegli una master per creare una sottocartella.</div>
           </div>
           <button type="button" className="btn-primary flex-shrink-0" onClick={saveFolder}>
             {editingFolderId ? <Save size={15} /> : <FolderPlus size={15} />}

@@ -58,10 +58,12 @@ export default function Sidebar() {
   const economy = useStore((s) => s.getProjectEconomy(MIRAGE_PROJECT_ID));
   const economyFolders = economy?.customFolders ?? [];
   const economyItems = economy?.customItems ?? [];
-  const masterFolders = economyFolders.filter((folder) => !folder.parentId);
+  const validFolderIds = new Set(economyFolders.map((folder) => folder.id));
+  const isMasterFolder = (folder: { parentId?: string }) => !folder.parentId || !validFolderIds.has(folder.parentId);
+  const masterFolders = economyFolders.filter(isMasterFolder);
   const childFoldersByParent = new Map<string, typeof economyFolders>();
   economyFolders.forEach((folder) => {
-    if (!folder.parentId) return;
+    if (!folder.parentId || !validFolderIds.has(folder.parentId)) return;
     childFoldersByParent.set(folder.parentId, [...(childFoldersByParent.get(folder.parentId) ?? []), folder]);
   });
   const countFolderItems = (folderId: string) => {
