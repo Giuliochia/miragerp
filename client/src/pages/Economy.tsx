@@ -161,30 +161,21 @@ export default function Economy() {
 
     if (validFolder && folderFromUrl !== activeFolder) {
       setActiveFolder(folderFromUrl);
+    } else if (!validFolder) {
+      setActiveFolder(ALL_FOLDERS);
     }
   }, [activeFolder, folders, searchParams]);
 
-  useEffect(() => {
-    const validFolder = activeFolder === ALL_FOLDERS
-      || activeFolder === UNCATEGORIZED_FOLDER
-      || folders.some((folder) => folder.id === activeFolder);
-
-    if (!validFolder) {
-      setActiveFolder(ALL_FOLDERS);
-      return;
-    }
-
+  const selectFolder = (folderId: string) => {
+    setActiveFolder(folderId);
     const nextParams = new URLSearchParams(searchParams);
-    if (activeFolder === ALL_FOLDERS) {
+    if (folderId === ALL_FOLDERS) {
       nextParams.delete('folder');
     } else {
-      nextParams.set('folder', activeFolder);
+      nextParams.set('folder', folderId);
     }
-
-    if (nextParams.toString() !== searchParams.toString()) {
-      setSearchParams(nextParams, { replace: true });
-    }
-  }, [activeFolder, folders, searchParams, setSearchParams]);
+    setSearchParams(nextParams, { replace: true });
+  };
 
   const folderStats = useMemo(() => {
     const stats = new Map<string, number>();
@@ -375,7 +366,7 @@ export default function Economy() {
     setFolders(nextFolders);
     setFolderName('');
     setFolderParentId('');
-    setActiveFolder(folder.id);
+    selectFolder(folder.id);
     setDraft((current) => ({ ...current, folderId: folder.id }));
     saveEconomy(items, nextFolders);
   };
@@ -384,7 +375,7 @@ export default function Economy() {
     setEditingFolderId(folder.id);
     setFolderName(folder.name);
     setFolderParentId(folder.parentId ?? '');
-    setActiveFolder(folder.id);
+    selectFolder(folder.id);
   };
 
   const cancelFolderEdit = () => {
@@ -407,7 +398,7 @@ export default function Economy() {
     ));
     setFolders(nextFolders);
     setItems(nextItems);
-    if (removedFolderIds.includes(activeFolder)) setActiveFolder(ALL_FOLDERS);
+    if (removedFolderIds.includes(activeFolder)) selectFolder(ALL_FOLDERS);
     if (removedFolderIds.includes(editingFolderId)) cancelFolderEdit();
     if (draft.folderId && removedFolderIds.includes(draft.folderId)) setDraft({ ...draft, folderId: '' });
     saveEconomy(nextItems, nextFolders);
@@ -428,9 +419,9 @@ export default function Economy() {
       quantity: fillWeightValue(item),
     });
     if (item.folderId && folderLabelById.has(item.folderId)) {
-      setActiveFolder(item.folderId);
+      selectFolder(item.folderId);
     } else {
-      setActiveFolder(UNCATEGORIZED_FOLDER);
+      selectFolder(UNCATEGORIZED_FOLDER);
     }
   };
 
@@ -498,7 +489,7 @@ export default function Economy() {
             <div className="mt-2 flex flex-wrap gap-1">
               <button
                 type="button"
-                onClick={() => setActiveFolder(item.folderId && folderLabelById.has(item.folderId) ? item.folderId : UNCATEGORIZED_FOLDER)}
+                onClick={() => selectFolder(item.folderId && folderLabelById.has(item.folderId) ? item.folderId : UNCATEGORIZED_FOLDER)}
                 className="inline-flex items-center gap-1 rounded-full border border-border bg-bg-card px-2 py-0.5 text-[10px] font-semibold text-text-muted hover:border-violet-primary hover:text-text-primary"
               >
                 <Folder size={11} />
@@ -616,7 +607,7 @@ export default function Economy() {
         <div className="flex flex-wrap gap-2">
           <button
             type="button"
-            onClick={() => setActiveFolder(ALL_FOLDERS)}
+            onClick={() => selectFolder(ALL_FOLDERS)}
             className={`rounded-lg border px-3 py-2 text-xs font-semibold transition ${
               activeFolder === ALL_FOLDERS
                 ? 'border-violet-primary bg-violet-primary/20 text-text-primary'
@@ -641,7 +632,7 @@ export default function Economy() {
                     <button
                       type="button"
                       onClick={() => {
-                        setActiveFolder(folder.id);
+                        selectFolder(folder.id);
                         setDraft((current) => ({ ...current, folderId: folder.id }));
                       }}
                       className="flex items-center gap-2 text-xs font-semibold text-text-primary"
@@ -673,7 +664,7 @@ export default function Economy() {
           ))}
           <button
             type="button"
-            onClick={() => setActiveFolder(UNCATEGORIZED_FOLDER)}
+            onClick={() => selectFolder(UNCATEGORIZED_FOLDER)}
             className={`rounded-lg border px-3 py-2 text-xs font-semibold transition ${
               activeFolder === UNCATEGORIZED_FOLDER
                 ? 'border-violet-primary bg-violet-primary/20 text-text-primary'
@@ -845,7 +836,7 @@ export default function Economy() {
                 <button
                   key={folder.id}
                   type="button"
-                  onClick={() => setActiveFolder(folder.id)}
+                  onClick={() => selectFolder(folder.id)}
                   className={`bg-bg-card2 border rounded-lg p-4 text-left transition hover:border-violet-primary ${
                     activeFolder === folder.id ? 'border-violet-primary shadow-glow' : 'border-border'
                   }`}
@@ -880,7 +871,7 @@ export default function Economy() {
                 {visibleItems.length} item in questa cartella. La lista completa resta sempre disponibile sotto.
               </p>
             </div>
-            <button type="button" className="btn-secondary px-3 py-2 text-xs" onClick={() => setActiveFolder(ALL_FOLDERS)}>
+            <button type="button" className="btn-secondary px-3 py-2 text-xs" onClick={() => selectFolder(ALL_FOLDERS)}>
               Tutti gli item
             </button>
           </div>
