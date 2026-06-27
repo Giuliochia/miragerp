@@ -78,7 +78,9 @@ const blankItem = (category = 'Comune', acquisition = 'Negozio', folderId = ''):
   acquisition,
   price: 100,
   supplierPrice: 0,
+  weight: 10,
   fillWeight: 10,
+  satiety: 0,
   impactBand: 'medium',
   quantity: 10,
   restockPerDay: 0,
@@ -110,8 +112,16 @@ function impactBandLabel(value: EconomyCustomItem['impactBand']) {
   return impactBands.find((band) => band.value === value)?.label ?? 'Media';
 }
 
-function fillWeightValue(item: EconomyCustomItem) {
+function legacyWeightValue(item: EconomyCustomItem) {
   return item.fillWeight ?? item.quantity ?? 0;
+}
+
+function weightValue(item: EconomyCustomItem) {
+  return item.weight ?? legacyWeightValue(item);
+}
+
+function satietyValue(item: EconomyCustomItem) {
+  return item.satiety ?? item.fillWeight ?? 0;
 }
 
 function scoreColor(score: number, healthyThreshold: number, warningThreshold: number) {
@@ -123,7 +133,7 @@ function scoreColor(score: number, healthyThreshold: number, warningThreshold: n
 function scoreLabel(score: number, healthyThreshold: number, warningThreshold: number) {
   if (score >= healthyThreshold) return 'Economia tendenzialmente fattibile.';
   if (score >= warningThreshold) return 'Economia utilizzabile, ma da monitorare.';
-  return 'Economia sproporzionata: serve rivedere payout, prezzi, peso/riempimento o costo fornitore.';
+  return 'Economia sproporzionata: serve rivedere payout, prezzi, peso o costo fornitore.';
 }
 
 export default function Economy() {
@@ -291,7 +301,7 @@ export default function Economy() {
     ));
     const heavyWeaponItems = items
       .filter((item) => containsAny(item.category, ['arma', 'weapon']))
-      .filter((item) => fillWeightValue(item) >= 20).length;
+      .filter((item) => weightValue(item) >= 20).length;
     const tooCheapRareItems = items.filter((item) => (
       containsAny(item.category, ['raro', 'rare', 'arma', 'weapon', 'illegale', 'illegal']) &&
       item.price < base.legalIncomeAverage * 1.5
@@ -371,7 +381,7 @@ export default function Economy() {
       hardMissionReward: 0,
       inflationRisk: analysis.score < warningThreshold ? 'high' : analysis.score < healthyThreshold ? 'medium' : 'low',
       balanceScore: analysis.score,
-      balanceNotes: 'Score calcolato su entrate, prezzo item, prezzo fornitore, fascia impatto, peso/riempimento e rapporto ore/prezzo.',
+      balanceNotes: 'Score calcolato su entrate, prezzo item, prezzo fornitore, fascia impatto, peso item e rapporto ore/prezzo.',
       antiFarmRules: [],
       customFolders: nextFolders,
       customItems: nextItems,
@@ -461,13 +471,15 @@ export default function Economy() {
     setDraft({
       ...item,
       supplierPrice: item.supplierPrice ?? 0,
-      fillWeight: fillWeightValue(item),
+      weight: weightValue(item),
+      fillWeight: weightValue(item),
+      satiety: isFoodDrinkItem(item) ? satietyValue(item) : 0,
       fats: numberValue(item.fats),
       proteins: numberValue(item.proteins),
       carbohydrates: numberValue(item.carbohydrates),
       calories: numberValue(item.calories),
       impactBand: item.impactBand ?? 'medium',
-      quantity: fillWeightValue(item),
+      quantity: weightValue(item),
     });
     if (item.folderId && folderLabelById.has(item.folderId)) {
       selectFolder(item.folderId);
@@ -493,13 +505,15 @@ export default function Economy() {
       acquisition: draft.acquisition.trim() || acquisitionMethods[0],
       price: Math.max(0, draft.price),
       supplierPrice: Math.max(0, draft.supplierPrice ?? 0),
-      fillWeight: Math.max(0, fillWeightValue(draft)),
+      weight: Math.max(0, weightValue(draft)),
+      fillWeight: Math.max(0, weightValue(draft)),
+      satiety: foodDrink ? numberValue(draft.satiety) : undefined,
       fats: foodDrink ? numberValue(draft.fats) : undefined,
       proteins: foodDrink ? numberValue(draft.proteins) : undefined,
       carbohydrates: foodDrink ? numberValue(draft.carbohydrates) : undefined,
       calories: foodDrink ? numberValue(draft.calories) : undefined,
       impactBand: draft.impactBand ?? 'medium',
-      quantity: Math.max(0, fillWeightValue(draft)),
+      quantity: Math.max(0, weightValue(draft)),
       restockPerDay: 0,
       createdAt: draft.createdAt ?? now,
       updatedAt: now,
@@ -538,7 +552,8 @@ export default function Economy() {
     const supplierMargin = item.price - (item.supplierPrice ?? 0);
     const foodDrink = isFoodDrinkItem(item);
     const hasNutrition = foodDrink && (
-      numberValue(item.fats) > 0
+      satietyValue(item) > 0
+      || numberValue(item.fats) > 0
       || numberValue(item.proteins) > 0
       || numberValue(item.carbohydrates) > 0
       || numberValue(item.calories) > 0
@@ -550,7 +565,7 @@ export default function Economy() {
           <div className="min-w-0">
             <div className="text-sm font-semibold text-text-primary truncate">{item.name}</div>
             <div className="text-[11px] text-text-muted mt-1">
-              {displayLabel(item.category)} - {displayLabel(item.acquisition)} - peso/riemp. {fillWeightValue(item)} - fascia {impactBandLabel(item.impactBand)}
+              {displayLabel(item.category)} - {displayLabel(item.acquisition)} - peso {weightValue(item)} - fascia {impactBandLabel(item.impactBand)}
             </div>
             <div className="mt-2 flex flex-wrap gap-1">
               <button
@@ -573,7 +588,7 @@ export default function Economy() {
               </span>
               {hasNutrition && (
                 <span className="inline-flex rounded-full border border-accent-amber/30 bg-accent-amber/10 px-2 py-0.5 text-[10px] font-semibold text-accent-amber">
-                  G {numberValue(item.fats)} - P {numberValue(item.proteins)} - C {numberValue(item.carbohydrates)} - {numberValue(item.calories)} kcal
+                  Sazieta {satietyValue(item)} - G {numberValue(item.fats)} - P {numberValue(item.proteins)} - C {numberValue(item.carbohydrates)} - {numberValue(item.calories)} kcal
                 </span>
               )}
             </div>
@@ -754,7 +769,7 @@ export default function Economy() {
             <p className="text-xs text-text-muted mt-1">
               {editingItemId
                 ? 'Aggiorna i dati dell item selezionato nello storico.'
-                : 'Inserisci gli item del server con cartella, prezzo vendita, prezzo fornitore, peso/riempimento e fascia impatto.'}
+                : 'Inserisci gli item del server con cartella, prezzo vendita, prezzo fornitore, peso e fascia impatto.'}
             </p>
           </div>
           {editingItemId && (
@@ -794,18 +809,18 @@ export default function Economy() {
             <div className="text-[10px] text-text-muted mt-1">Quanto costa comprarlo dal fornitore.</div>
           </div>
           <div>
-            <label className="label">Riempimento / Peso</label>
+            <label className="label">Peso</label>
             <input
               type="number"
               className="input"
               placeholder="es. 10"
-              value={fillWeightValue(draft)}
+              value={weightValue(draft)}
               onChange={(e) => {
                 const value = Number(e.target.value);
-                setDraft({ ...draft, fillWeight: value, quantity: value });
+                setDraft({ ...draft, weight: value, fillWeight: value, quantity: value });
               }}
             />
-            <div className="text-[10px] text-text-muted mt-1">Per i cibi indica quanto riempie, per gli altri item quanto pesa.</div>
+            <div className="text-[10px] text-text-muted mt-1">Quanto pesa l'oggetto nell'inventario.</div>
           </div>
           <div>
             <label className="label">Fascia</label>
@@ -821,6 +836,10 @@ export default function Economy() {
                 <div className="text-[11px] text-text-muted mt-1">Visibili solo per cibi e bevande, riconosciuti da cartella, categoria o nome item.</div>
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                <div>
+                  <label className="label">Riempimento sazieta</label>
+                  <input type="number" className="input" min={0} value={draft.satiety ?? 0} onChange={(e) => setDraft({ ...draft, satiety: Number(e.target.value) })} />
+                </div>
                 <div>
                   <label className="label">Grassi</label>
                   <input type="number" className="input" min={0} value={draft.fats ?? 0} onChange={(e) => setDraft({ ...draft, fats: Number(e.target.value) })} />
