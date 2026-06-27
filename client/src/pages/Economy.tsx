@@ -1,5 +1,5 @@
 ﻿import { useMemo, useState } from 'react';
-import { AlertTriangle, DollarSign, Folder, FolderPlus, Package, Pencil, Plus, Save, Trash2, X } from 'lucide-react';
+import { AlertTriangle, DollarSign, Download, Folder, FolderPlus, Package, Pencil, Plus, Save, Trash2, X } from 'lucide-react';
 import { useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { v4 as uuidv4 } from 'uuid';
@@ -76,6 +76,8 @@ const blankItem = (category = 'Comune', acquisition = 'Negozio', folderId = ''):
   name: '',
   category,
   acquisition,
+  exportKey: '',
+  prop: '',
   price: 100,
   supplierPrice: 0,
   weight: 10,
@@ -83,6 +85,12 @@ const blankItem = (category = 'Comune', acquisition = 'Negozio', folderId = ''):
   satiety: 0,
   impactBand: 'medium',
   quantity: 10,
+  stackNum: 10,
+  itemWL: '',
+  statusName: '',
+  statusValue: 0,
+  animDict: '',
+  animClip: '',
   restockPerDay: 0,
   notes: '',
 });
@@ -106,6 +114,21 @@ function containsAny(value: string, needles: string[]) {
 
 function numberValue(value: number | undefined) {
   return Math.max(0, Number(value ?? 0));
+}
+
+function luaString(value: string | undefined) {
+  return String(value ?? '').replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/"/g, '\\"');
+}
+
+function itemExportKey(item: EconomyCustomItem) {
+  const source = item.exportKey?.trim() || item.name;
+  return source
+    .trim()
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9]+/g, '_')
+    .replace(/^_+|_+$/g, '') || `item_${item.id.slice(0, 8)}`;
 }
 
 function impactBandLabel(value: EconomyCustomItem['impactBand']) {
@@ -388,6 +411,74 @@ export default function Economy() {
     });
   };
 
+  const buildLuaExport = () => {
+    const lines = ['return {'];
+
+    items.forEach((item) => {
+      const foodDrink = isFoodDrinkItem(item);
+      const metadataLines = [
+        `            stackNum = ${Math.max(1, Math.round(numberValue(item.stackNum) || 10))},`,
+        `            itemWL = "${luaString(item.itemWL?.trim() || (foodDrink ? 'food' : displayLabel(item.category).toLowerCase()))}",`,
+      ];
+
+      if (foodDrink) {
+        const nutrition = [
+          ['grassi', item.fats],
+          ['proteine', item.proteins],
+          ['carboidrati', item.carbohydrates],
+          ['calorie', item.calories],
+        ] as const;
+
+        nutrition.forEach(([key, value]) => {
+          if (numberValue(value) > 0) {
+            metadataLines.push(`            ${key} = ${numberValue(value)},`);
+          }
+        });
+      }
+
+      const clientLines: string[] = [];
+      const statusName = item.statusName?.trim() || (foodDrink ? 'hunger' : '');
+      const statusValue = numberValue(item.statusValue) || (foodDrink ? 200000 : 0);
+      if (statusName && statusValue > 0) {
+        clientLines.push(`            status = { ${statusName} = ${Math.round(statusValue)} },`);
+      }
+      const animDict = item.animDict?.trim() || (foodDrink ? 'mp_player_inteat@burger' : '');
+      const animClip = item.animClip?.trim() || (foodDrink ? 'mp_player_int_eat_burger' : '');
+      if (animDict || animClip) {
+        clientLines.push(`            anim = { dict = '${luaString(animDict)}', clip = '${luaString(animClip)}' },`);
+      }
+
+      lines.push(`    ['${luaString(itemExportKey(item))}'] = {`);
+      lines.push(`        label = '${luaString(item.name)}',`);
+      lines.push(`        prop = '${luaString(item.prop)}',`);
+      lines.push(`        weight = ${Math.round(weightValue(item))},`);
+      lines.push('        metadata = {');
+      lines.push(...metadataLines);
+      lines.push('        },');
+      if (clientLines.length > 0) {
+        lines.push('        client = {');
+        lines.push(...clientLines);
+        lines.push('        },');
+      }
+      lines.push('    },');
+    });
+
+    lines.push('}');
+    return lines.join('\n');
+  };
+
+  const exportLuaItems = () => {
+    const lua = buildLuaExport();
+    const blob = new Blob([lua], { type: 'text/plain;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    const stamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+    a.href = url;
+    a.download = `mirage-rp-items-${stamp}.lua`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
   const saveFolder = () => {
     const name = folderName.trim();
     if (!name) return;
@@ -470,6 +561,8 @@ export default function Economy() {
     setEditingItemId(item.id);
     setDraft({
       ...item,
+      exportKey: item.exportKey ?? itemExportKey(item),
+      prop: item.prop ?? '',
       supplierPrice: item.supplierPrice ?? 0,
       weight: weightValue(item),
       fillWeight: weightValue(item),
@@ -480,6 +573,12 @@ export default function Economy() {
       calories: numberValue(item.calories),
       impactBand: item.impactBand ?? 'medium',
       quantity: weightValue(item),
+      stackNum: item.stackNum ?? 10,
+      itemWL: item.itemWL ?? (isFoodDrinkItem(item) ? 'food' : displayLabel(item.category).toLowerCase()),
+      statusName: item.statusName ?? (isFoodDrinkItem(item) ? 'hunger' : ''),
+      statusValue: item.statusValue ?? (isFoodDrinkItem(item) ? 200000 : 0),
+      animDict: item.animDict ?? (isFoodDrinkItem(item) ? 'mp_player_inteat@burger' : ''),
+      animClip: item.animClip ?? (isFoodDrinkItem(item) ? 'mp_player_int_eat_burger' : ''),
     });
     if (item.folderId && folderLabelById.has(item.folderId)) {
       selectFolder(item.folderId);
@@ -502,6 +601,8 @@ export default function Economy() {
       folderId: nextFolderId,
       name: draft.name.trim(),
       category: draft.category.trim() || categories[0],
+      exportKey: itemExportKey(draft),
+      prop: draft.prop?.trim() ?? '',
       acquisition: draft.acquisition.trim() || acquisitionMethods[0],
       price: Math.max(0, draft.price),
       supplierPrice: Math.max(0, draft.supplierPrice ?? 0),
@@ -514,6 +615,12 @@ export default function Economy() {
       calories: foodDrink ? numberValue(draft.calories) : undefined,
       impactBand: draft.impactBand ?? 'medium',
       quantity: Math.max(0, weightValue(draft)),
+      stackNum: Math.max(1, Math.round(numberValue(draft.stackNum) || 10)),
+      itemWL: draft.itemWL?.trim() || (foodDrink ? 'food' : draft.category.trim().toLowerCase()),
+      statusName: draft.statusName?.trim() || (foodDrink ? 'hunger' : ''),
+      statusValue: foodDrink ? Math.max(1, Math.round(numberValue(draft.statusValue) || 200000)) : Math.max(0, Math.round(numberValue(draft.statusValue))),
+      animDict: draft.animDict?.trim() || (foodDrink ? 'mp_player_inteat@burger' : ''),
+      animClip: draft.animClip?.trim() || (foodDrink ? 'mp_player_int_eat_burger' : ''),
       restockPerDay: 0,
       createdAt: draft.createdAt ?? now,
       updatedAt: now,
@@ -567,6 +674,12 @@ export default function Economy() {
       { label: 'Fascia impatto', value: impactBandLabel(item.impactBand) },
       { label: 'Ore legale', value: `${legalHours.toFixed(1)}h` },
       { label: 'Ore illegale', value: `${illegalHours.toFixed(1)}h` },
+      { label: 'Chiave export', value: itemExportKey(item) },
+      { label: 'Prop', value: item.prop || 'Non impostato' },
+      { label: 'Stack', value: item.stackNum ?? 10 },
+      { label: 'Item WL', value: item.itemWL || (foodDrink ? 'food' : displayLabel(item.category).toLowerCase()) },
+      { label: 'Status', value: item.statusName ? `${item.statusName} ${numberValue(item.statusValue)}` : 'Nessuno' },
+      { label: 'Animazione', value: item.animDict || item.animClip ? `${item.animDict || '-'} / ${item.animClip || '-'}` : 'Nessuna' },
     ];
 
     return (
@@ -636,6 +749,10 @@ export default function Economy() {
       <div className="flex items-center gap-2">
         <DollarSign size={18} className="text-accent-green" />
         <h1 className="text-xl font-bold text-text-primary">Economia Mirage RP</h1>
+        <button type="button" className="btn-secondary ml-auto px-3 py-2 text-xs" onClick={exportLuaItems} disabled={items.length === 0}>
+          <Download size={14} />
+          Esporta items Lua
+        </button>
       </div>
 
       <div className="card space-y-4">
@@ -879,6 +996,57 @@ export default function Economy() {
               </div>
             </div>
           )}
+          <div className="sm:col-span-2 lg:col-span-4 rounded-lg border border-border bg-bg-card2 p-3">
+            <div className="mb-3">
+              <div className="text-xs font-bold uppercase tracking-wide text-text-primary">Export server</div>
+              <div className="text-[11px] text-text-muted mt-1">Questi valori vengono usati nel file Lua degli item.</div>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+              <div>
+                <label className="label">Chiave item</label>
+                <input
+                  className="input"
+                  placeholder="es. arachidi"
+                  value={draft.exportKey ?? ''}
+                  onChange={(e) => setDraft({ ...draft, exportKey: e.target.value })}
+                />
+                <div className="text-[10px] text-text-muted mt-1">Se vuota, viene generata dal nome.</div>
+              </div>
+              <div>
+                <label className="label">Prop</label>
+                <input
+                  className="input"
+                  placeholder="es. bzzz_new_snacks_peanuts_a"
+                  value={draft.prop ?? ''}
+                  onChange={(e) => setDraft({ ...draft, prop: e.target.value })}
+                />
+              </div>
+              <div>
+                <label className="label">Stack num</label>
+                <input type="number" min={1} className="input" value={draft.stackNum ?? 10} onChange={(e) => setDraft({ ...draft, stackNum: Number(e.target.value) })} />
+              </div>
+              <div>
+                <label className="label">Item WL</label>
+                <input className="input" placeholder="es. food" value={draft.itemWL ?? ''} onChange={(e) => setDraft({ ...draft, itemWL: e.target.value })} />
+              </div>
+              <div>
+                <label className="label">Status</label>
+                <input className="input" placeholder="es. hunger" value={draft.statusName ?? ''} onChange={(e) => setDraft({ ...draft, statusName: e.target.value })} />
+              </div>
+              <div>
+                <label className="label">Valore status</label>
+                <input type="number" min={0} className="input" value={draft.statusValue ?? 0} onChange={(e) => setDraft({ ...draft, statusValue: Number(e.target.value) })} />
+              </div>
+              <div>
+                <label className="label">Anim dict</label>
+                <input className="input" placeholder="mp_player_inteat@burger" value={draft.animDict ?? ''} onChange={(e) => setDraft({ ...draft, animDict: e.target.value })} />
+              </div>
+              <div>
+                <label className="label">Anim clip</label>
+                <input className="input" placeholder="mp_player_int_eat_burger" value={draft.animClip ?? ''} onChange={(e) => setDraft({ ...draft, animClip: e.target.value })} />
+              </div>
+            </div>
+          </div>
           <div>
             <label className="label">Categoria</label>
             <input

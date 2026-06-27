@@ -221,6 +221,8 @@ export interface EconomyCustomItem {
   folderId?: string;
   name: string;
   category: string;
+  exportKey?: string;
+  prop?: string;
   price: number;
   supplierPrice?: number;
   weight?: number;
@@ -233,6 +235,12 @@ export interface EconomyCustomItem {
   impactBand?: 'low' | 'medium' | 'high';
   quantity: number;
   acquisition: string;
+  stackNum?: number;
+  itemWL?: string;
+  statusName?: string;
+  statusValue?: number;
+  animDict?: string;
+  animClip?: string;
   restockPerDay: number;
   notes: string;
   createdAt?: string;
