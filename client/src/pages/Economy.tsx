@@ -28,6 +28,27 @@ const legacyLabels: Record<string, string> = {
 
 const ALL_FOLDERS = 'all';
 const UNCATEGORIZED_FOLDER = 'uncategorized';
+const foodDrinkKeywords = [
+  'cibo',
+  'cibi',
+  'food',
+  'alimento',
+  'alimentari',
+  'bevanda',
+  'bevande',
+  'drink',
+  'bibita',
+  'bibite',
+  'bar',
+  'ristorante',
+  'burger',
+  'milkshake',
+  'cola',
+  'soda',
+  'acqua',
+  'caffe',
+  'coffee',
+];
 
 function descendantFolderIds(folders: EconomyFolder[], parentId: string) {
   const result: string[] = [];
@@ -79,6 +100,10 @@ function normalized(value: string) {
 function containsAny(value: string, needles: string[]) {
   const text = normalized(value);
   return needles.some((needle) => text.includes(needle));
+}
+
+function numberValue(value: number | undefined) {
+  return Math.max(0, Number(value ?? 0));
 }
 
 function impactBandLabel(value: EconomyCustomItem['impactBand']) {
@@ -202,6 +227,28 @@ export default function Economy() {
   const selectedFolderName = activeFolder === UNCATEGORIZED_FOLDER
     ? 'Senza cartella'
     : folders.find((folder) => folder.id === activeFolder)?.name ?? '';
+
+  const getFolderPathLabels = (folderId?: string) => {
+    if (!folderId) return [];
+    const labels: string[] = [];
+    const visited = new Set<string>();
+    let current = folders.find((folder) => folder.id === folderId);
+
+    while (current && !visited.has(current.id)) {
+      labels.push(current.name);
+      visited.add(current.id);
+      current = current.parentId ? folders.find((folder) => folder.id === current?.parentId) : undefined;
+    }
+
+    return labels;
+  };
+
+  const isFoodDrinkItem = (item: Pick<EconomyCustomItem, 'folderId' | 'category' | 'name'>) => {
+    const searchable = [item.category, item.name, ...getFolderPathLabels(item.folderId)].join(' ');
+    return containsAny(searchable, foodDrinkKeywords);
+  };
+
+  const draftIsFoodDrink = isFoodDrinkItem(draft);
 
   const folderCards = useMemo(() => {
     const folderSummaries = folders.map((folder) => {
@@ -415,6 +462,10 @@ export default function Economy() {
       ...item,
       supplierPrice: item.supplierPrice ?? 0,
       fillWeight: fillWeightValue(item),
+      fats: numberValue(item.fats),
+      proteins: numberValue(item.proteins),
+      carbohydrates: numberValue(item.carbohydrates),
+      calories: numberValue(item.calories),
       impactBand: item.impactBand ?? 'medium',
       quantity: fillWeightValue(item),
     });
@@ -429,6 +480,10 @@ export default function Economy() {
     if (!draft.name.trim()) return;
     const now = new Date().toISOString();
     const nextFolderId = draft.folderId && folderLabelById.has(draft.folderId) ? draft.folderId : undefined;
+    const foodDrink = isFoodDrinkItem({
+      ...draft,
+      folderId: nextFolderId,
+    });
     const nextItem = {
       ...draft,
       id: editingItemId || uuidv4(),
@@ -439,6 +494,10 @@ export default function Economy() {
       price: Math.max(0, draft.price),
       supplierPrice: Math.max(0, draft.supplierPrice ?? 0),
       fillWeight: Math.max(0, fillWeightValue(draft)),
+      fats: foodDrink ? numberValue(draft.fats) : undefined,
+      proteins: foodDrink ? numberValue(draft.proteins) : undefined,
+      carbohydrates: foodDrink ? numberValue(draft.carbohydrates) : undefined,
+      calories: foodDrink ? numberValue(draft.calories) : undefined,
       impactBand: draft.impactBand ?? 'medium',
       quantity: Math.max(0, fillWeightValue(draft)),
       restockPerDay: 0,
@@ -477,6 +536,13 @@ export default function Economy() {
     const illegalHours = item.price / Math.max(1, base.illegalIncomeAverage);
     const itemFolder = item.folderId ? folderLabelById.get(item.folderId) : '';
     const supplierMargin = item.price - (item.supplierPrice ?? 0);
+    const foodDrink = isFoodDrinkItem(item);
+    const hasNutrition = foodDrink && (
+      numberValue(item.fats) > 0
+      || numberValue(item.proteins) > 0
+      || numberValue(item.carbohydrates) > 0
+      || numberValue(item.calories) > 0
+    );
 
     return (
       <div key={item.id} className="bg-bg-card2 border border-border rounded-lg p-3">
@@ -505,6 +571,11 @@ export default function Economy() {
               }`}>
                 Margine ${supplierMargin.toLocaleString()}
               </span>
+              {hasNutrition && (
+                <span className="inline-flex rounded-full border border-accent-amber/30 bg-accent-amber/10 px-2 py-0.5 text-[10px] font-semibold text-accent-amber">
+                  G {numberValue(item.fats)} - P {numberValue(item.proteins)} - C {numberValue(item.carbohydrates)} - {numberValue(item.calories)} kcal
+                </span>
+              )}
             </div>
           </div>
           <div className="flex items-center gap-2 flex-shrink-0">
@@ -743,6 +814,32 @@ export default function Economy() {
             </select>
             <div className="text-[10px] text-text-muted mt-1">Intensita bassa, media o alta.</div>
           </div>
+          {draftIsFoodDrink && (
+            <div className="sm:col-span-2 lg:col-span-4 rounded-lg border border-accent-amber/25 bg-accent-amber/5 p-3">
+              <div className="mb-3">
+                <div className="text-xs font-bold uppercase tracking-wide text-accent-amber">Valori nutrizionali</div>
+                <div className="text-[11px] text-text-muted mt-1">Visibili solo per cibi e bevande, riconosciuti da cartella, categoria o nome item.</div>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                <div>
+                  <label className="label">Grassi</label>
+                  <input type="number" className="input" min={0} value={draft.fats ?? 0} onChange={(e) => setDraft({ ...draft, fats: Number(e.target.value) })} />
+                </div>
+                <div>
+                  <label className="label">Proteine</label>
+                  <input type="number" className="input" min={0} value={draft.proteins ?? 0} onChange={(e) => setDraft({ ...draft, proteins: Number(e.target.value) })} />
+                </div>
+                <div>
+                  <label className="label">Carboidrati</label>
+                  <input type="number" className="input" min={0} value={draft.carbohydrates ?? 0} onChange={(e) => setDraft({ ...draft, carbohydrates: Number(e.target.value) })} />
+                </div>
+                <div>
+                  <label className="label">Calorie</label>
+                  <input type="number" className="input" min={0} value={draft.calories ?? 0} onChange={(e) => setDraft({ ...draft, calories: Number(e.target.value) })} />
+                </div>
+              </div>
+            </div>
+          )}
           <div>
             <label className="label">Categoria</label>
             <input

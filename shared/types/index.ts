@@ -224,6 +224,10 @@ export interface EconomyCustomItem {
   price: number;
   supplierPrice?: number;
   fillWeight?: number;
+  fats?: number;
+  proteins?: number;
+  carbohydrates?: number;
+  calories?: number;
   impactBand?: 'low' | 'medium' | 'high';
   quantity: number;
   acquisition: string;
