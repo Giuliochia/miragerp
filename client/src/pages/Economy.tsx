@@ -1017,7 +1017,7 @@ export default function Economy() {
               Nessun item in questa cartella.
             </div>
           ) : (
-            <div className="space-y-2 max-h-[420px] overflow-y-auto pr-1">
+            <div className="space-y-3 max-h-[72vh] min-h-[560px] overflow-y-auto pr-2">
               {visibleItems.map((item) => renderItemCard(item))}
             </div>
           )}
@@ -1040,7 +1040,7 @@ export default function Economy() {
             Aggiungi il primo item custom per iniziare a calcolare l'economia.
           </div>
         ) : (
-          <div className="space-y-2 max-h-[520px] overflow-y-auto pr-1">
+          <div className="space-y-3 max-h-[64vh] min-h-[520px] overflow-y-auto pr-2">
             {items.map((item) => renderItemCard(item))}
           </div>
         )}
