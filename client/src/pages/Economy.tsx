@@ -550,54 +550,33 @@ export default function Economy() {
     const illegalHours = item.price / Math.max(1, base.illegalIncomeAverage);
     const itemFolder = item.folderId ? folderLabelById.get(item.folderId) : '';
     const supplierMargin = item.price - (item.supplierPrice ?? 0);
+    const supplierPrice = item.supplierPrice ?? 0;
     const foodDrink = isFoodDrinkItem(item);
-    const hasNutrition = foodDrink && (
-      satietyValue(item) > 0
-      || numberValue(item.fats) > 0
-      || numberValue(item.proteins) > 0
-      || numberValue(item.carbohydrates) > 0
-      || numberValue(item.calories) > 0
-    );
+    const detailRows = [
+      { label: 'Cartella', value: itemFolder || 'Senza cartella', action: true },
+      { label: 'Categoria', value: displayLabel(item.category) },
+      { label: 'Ottenimento', value: displayLabel(item.acquisition) },
+      { label: 'Prezzo vendita', value: `$${item.price.toLocaleString()}`, accent: 'text-accent-green' },
+      { label: 'Prezzo fornitore', value: `$${supplierPrice.toLocaleString()}` },
+      {
+        label: 'Margine',
+        value: `$${supplierMargin.toLocaleString()}`,
+        accent: supplierMargin <= 0 ? 'text-accent-red' : 'text-accent-green',
+      },
+      { label: 'Peso', value: weightValue(item) },
+      { label: 'Fascia impatto', value: impactBandLabel(item.impactBand) },
+      { label: 'Ore legale', value: `${legalHours.toFixed(1)}h` },
+      { label: 'Ore illegale', value: `${illegalHours.toFixed(1)}h` },
+    ];
 
     return (
-      <div key={item.id} className="bg-bg-card2 border border-border rounded-lg p-3">
+      <div key={item.id} className="bg-bg-card2 border border-border rounded-lg p-4 hover:border-accent-amber/60 transition">
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
             <div className="text-sm font-semibold text-text-primary truncate">{item.name}</div>
-            <div className="text-[11px] text-text-muted mt-1">
-              {displayLabel(item.category)} - {displayLabel(item.acquisition)} - peso {weightValue(item)} - fascia {impactBandLabel(item.impactBand)}
-            </div>
-            <div className="mt-2 flex flex-wrap gap-1">
-              <button
-                type="button"
-                onClick={() => selectFolder(item.folderId && folderLabelById.has(item.folderId) ? item.folderId : UNCATEGORIZED_FOLDER)}
-                className="inline-flex items-center gap-1 rounded-full border border-border bg-bg-card px-2 py-0.5 text-[10px] font-semibold text-text-muted hover:border-violet-primary hover:text-text-primary"
-              >
-                <Folder size={11} />
-                {itemFolder || 'Senza cartella'}
-              </button>
-              <span className="inline-flex rounded-full border border-border bg-bg-card px-2 py-0.5 text-[10px] font-semibold text-text-muted">
-                Fornitore ${(item.supplierPrice ?? 0).toLocaleString()}
-              </span>
-              <span className={`inline-flex rounded-full border px-2 py-0.5 text-[10px] font-semibold ${
-                supplierMargin <= 0
-                  ? 'border-accent-red/30 bg-accent-red/10 text-accent-red'
-                  : 'border-accent-green/30 bg-accent-green/10 text-accent-green'
-              }`}>
-                Margine ${supplierMargin.toLocaleString()}
-              </span>
-              {hasNutrition && (
-                <span className="inline-flex rounded-full border border-accent-amber/30 bg-accent-amber/10 px-2 py-0.5 text-[10px] font-semibold text-accent-amber">
-                  Sazieta {satietyValue(item)} - G {numberValue(item.fats)} - P {numberValue(item.proteins)} - C {numberValue(item.carbohydrates)} - {numberValue(item.calories)} kcal
-                </span>
-              )}
-            </div>
+            <div className="text-[11px] text-text-muted mt-1">ID item: {item.id}</div>
           </div>
           <div className="flex items-center gap-2 flex-shrink-0">
-            <div className="text-right">
-              <div className="text-sm font-bold text-accent-green">${item.price.toLocaleString()}</div>
-              <div className="text-[10px] text-text-muted">{legalHours.toFixed(1)}h legale - {illegalHours.toFixed(1)}h illegale</div>
-            </div>
             <button className="p-2 text-text-muted hover:bg-accent-blue/10 hover:text-accent-blue rounded-lg" onClick={() => startEditItem(item)} title="Modifica item">
               <Pencil size={14} />
             </button>
@@ -606,6 +585,47 @@ export default function Economy() {
             </button>
           </div>
         </div>
+
+        <div className="mt-3 grid grid-cols-2 md:grid-cols-5 gap-2">
+          {detailRows.map((detail) => (
+            <div key={detail.label} className="rounded-lg border border-border bg-bg-card px-3 py-2 min-w-0">
+              <div className="text-[10px] uppercase tracking-wide text-text-muted">{detail.label}</div>
+              {detail.action ? (
+                <button
+                  type="button"
+                  onClick={() => selectFolder(item.folderId && folderLabelById.has(item.folderId) ? item.folderId : UNCATEGORIZED_FOLDER)}
+                  className="mt-1 inline-flex max-w-full items-center gap-1 text-xs font-semibold text-text-primary hover:text-accent-amber"
+                >
+                  <Folder size={12} className="flex-shrink-0" />
+                  <span className="truncate">{detail.value}</span>
+                </button>
+              ) : (
+                <div className={`mt-1 truncate text-xs font-semibold ${detail.accent ?? 'text-text-primary'}`}>{detail.value}</div>
+              )}
+            </div>
+          ))}
+        </div>
+
+        {foodDrink && (
+          <div className="mt-3 rounded-lg border border-accent-amber/25 bg-accent-amber/5 p-3">
+            <div className="mb-2 text-[10px] font-bold uppercase tracking-wide text-accent-amber">Valori cibo / bevanda</div>
+            <div className="grid grid-cols-2 md:grid-cols-5 gap-2">
+              {[
+                { label: 'Sazieta', value: satietyValue(item) },
+                { label: 'Grassi', value: numberValue(item.fats) },
+                { label: 'Proteine', value: numberValue(item.proteins) },
+                { label: 'Carboidrati', value: numberValue(item.carbohydrates) },
+                { label: 'Calorie', value: `${numberValue(item.calories)} kcal` },
+              ].map((detail) => (
+                <div key={detail.label} className="rounded-md border border-accent-amber/20 bg-bg-card px-3 py-2">
+                  <div className="text-[10px] uppercase tracking-wide text-text-muted">{detail.label}</div>
+                  <div className="mt-1 text-xs font-semibold text-accent-amber">{detail.value}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
         {item.notes && <p className="text-xs text-text-secondary mt-2 leading-relaxed">{item.notes}</p>}
       </div>
     );
