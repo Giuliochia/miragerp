@@ -205,7 +205,6 @@ function buildAuditSummary(previous: WorkspaceSnapshot | null, next: WorkspaceSn
         { key: 'proteins', label: 'proteine' },
         { key: 'carbohydrates', label: 'carboidrati' },
         { key: 'calories', label: 'calorie' },
-        { key: 'stackNum', label: 'stack' },
         { key: 'itemWL', label: 'item wl' },
         { key: 'statusName', label: 'status' },
         { key: 'statusValue', label: 'valore status' },

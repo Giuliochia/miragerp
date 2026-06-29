@@ -235,7 +235,6 @@ export interface EconomyCustomItem {
   impactBand?: 'low' | 'medium' | 'high';
   quantity: number;
   acquisition: string;
-  stackNum?: number;
   itemWL?: string;
   statusName?: string;
   statusValue?: number;

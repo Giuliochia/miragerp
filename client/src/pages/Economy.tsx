@@ -85,7 +85,6 @@ const blankItem = (category = 'Comune', acquisition = 'Negozio', folderId = ''):
   satiety: 0,
   impactBand: 'medium',
   quantity: 10,
-  stackNum: 10,
   itemWL: '',
   statusName: '',
   statusValue: 0,
@@ -417,7 +416,6 @@ export default function Economy() {
     items.forEach((item) => {
       const foodDrink = isFoodDrinkItem(item);
       const metadataLines = [
-        `            stackNum = ${Math.max(1, Math.round(numberValue(item.stackNum) || 10))},`,
         `            itemWL = "${luaString(item.itemWL?.trim() || (foodDrink ? 'food' : displayLabel(item.category).toLowerCase()))}",`,
       ];
 
@@ -452,6 +450,7 @@ export default function Economy() {
       lines.push(`        label = '${luaString(item.name)}',`);
       lines.push(`        prop = '${luaString(item.prop)}',`);
       lines.push(`        weight = ${Math.round(weightValue(item))},`);
+      lines.push(`        price = ${Math.round(numberValue(item.price))},`);
       lines.push('        metadata = {');
       lines.push(...metadataLines);
       lines.push('        },');
@@ -573,7 +572,6 @@ export default function Economy() {
       calories: numberValue(item.calories),
       impactBand: item.impactBand ?? 'medium',
       quantity: weightValue(item),
-      stackNum: item.stackNum ?? 10,
       itemWL: item.itemWL ?? (isFoodDrinkItem(item) ? 'food' : displayLabel(item.category).toLowerCase()),
       statusName: item.statusName ?? (isFoodDrinkItem(item) ? 'hunger' : ''),
       statusValue: item.statusValue ?? (isFoodDrinkItem(item) ? 200000 : 0),
@@ -615,7 +613,6 @@ export default function Economy() {
       calories: foodDrink ? numberValue(draft.calories) : undefined,
       impactBand: draft.impactBand ?? 'medium',
       quantity: Math.max(0, weightValue(draft)),
-      stackNum: Math.max(1, Math.round(numberValue(draft.stackNum) || 10)),
       itemWL: draft.itemWL?.trim() || (foodDrink ? 'food' : draft.category.trim().toLowerCase()),
       statusName: draft.statusName?.trim() || (foodDrink ? 'hunger' : ''),
       statusValue: foodDrink ? Math.max(1, Math.round(numberValue(draft.statusValue) || 200000)) : Math.max(0, Math.round(numberValue(draft.statusValue))),
@@ -676,7 +673,6 @@ export default function Economy() {
       { label: 'Ore illegale', value: `${illegalHours.toFixed(1)}h` },
       { label: 'Chiave export', value: itemExportKey(item) },
       { label: 'Prop', value: item.prop || 'Non impostato' },
-      { label: 'Stack', value: item.stackNum ?? 10 },
       { label: 'Item WL', value: item.itemWL || (foodDrink ? 'food' : displayLabel(item.category).toLowerCase()) },
       { label: 'Status', value: item.statusName ? `${item.statusName} ${numberValue(item.statusValue)}` : 'Nessuno' },
       { label: 'Animazione', value: item.animDict || item.animClip ? `${item.animDict || '-'} / ${item.animClip || '-'}` : 'Nessuna' },
@@ -1020,10 +1016,6 @@ export default function Economy() {
                   value={draft.prop ?? ''}
                   onChange={(e) => setDraft({ ...draft, prop: e.target.value })}
                 />
-              </div>
-              <div>
-                <label className="label">Stack num</label>
-                <input type="number" min={1} className="input" value={draft.stackNum ?? 10} onChange={(e) => setDraft({ ...draft, stackNum: Number(e.target.value) })} />
               </div>
               <div>
                 <label className="label">Item WL</label>
